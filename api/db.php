@@ -7,11 +7,11 @@ ini_set('max_execution_time', 0);
 ini_set('max_input_time', 0);
 ini_set('memory_limit', '2048M');
 
-// Database configuration
+// Database configuration //
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'hascol_customers');   // ⚠️ Apna database name
-define('DB_USER', 'root');
-define('DB_PASS', '');                    // ⚠️ Apna MySQL password
+define('DB_USER', 'Abdullah');          // ⚠️ Apna MySQL username
+define('DB_PASS', 'Allah786@');                    // ⚠️ Apna MySQL password
 
 // Create MySQLi connection - DIRECT GLOBAL VARIABLE
 $db = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
