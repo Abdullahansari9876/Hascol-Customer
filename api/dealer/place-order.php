@@ -46,6 +46,7 @@ $notes                 = trim($input['notes'] ?? '');
 $couponId              = (int)($input['coupon_id'] ?? 0);
 $manualDiscountPercent = (float)($input['discount'] ?? 0);
 $manualDiscountAmount  = (float)($input['discount_amount'] ?? 0);
+// Abdullah
 
 // ─── Validation ───
 if ($dealerId <= 0) {
@@ -385,7 +386,6 @@ try {
                 'coupon_type'           => $couponType,
                 'coupon_value'          => $couponValue,
                 'coupon_discount'       => $couponDiscount,
-                // Hello world
 
                 // Manual discount wala
                 'manual_discount_used'  => (bool)($manualDiscount > 0),
