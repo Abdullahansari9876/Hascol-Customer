@@ -365,6 +365,7 @@ if ($couponCount == 0) {
             $c['amount'],
             $c['min'],
             $validFrom,
+            // hello
             $validTo
         );
         if (!$stmt->execute()) {
