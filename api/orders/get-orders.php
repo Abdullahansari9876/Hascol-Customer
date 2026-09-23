@@ -1,25 +1,12 @@
 <?php
-/**
- * GET ORDERS API (Read-Only)
- * POST /api/orders/get-orders.php
- * Body: {
- *   customer_id?,
- *   dealer_id?,
- *   status?,              // pending|confirmed|processing|completed|cancelled
- *   payment_status?,      // unpaid|paid|refunded
- *   delivery_type?,       // pickup|delivery
- *   search?,              // order_number, player_key, player_id, coupon_code
- *   date_from?,
- *   date_to?
- * }
- */
 
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
+// ✅ Sirf OPTIONS handle karein
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit(0);
+}
+
 header("Content-Type: application/json; charset=utf-8");
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
 
 error_reporting(E_ALL);
 ini_set('display_errors', 1);

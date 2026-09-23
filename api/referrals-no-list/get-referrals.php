@@ -1,22 +1,12 @@
 <?php
-/**
- * GET REFERRAL NUMBERS API
- * POST /api/referrals-no-list/get-referrals.php
- * Body: {
- *   customer_id?,   // filter by used_by_customer_id
- *   is_used?,       // 0 or 1
- *   search?,        // search in referral_no
- *   date_from?,     // YYYY-MM-DD
- *   date_to?        // YYYY-MM-DD
- * }
- */
 
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
+// ✅ Sirf OPTIONS handle karein
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit(0);
+}
+
 header("Content-Type: application/json; charset=utf-8");
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
 
 error_reporting(E_ALL);
 ini_set('display_errors', 1);

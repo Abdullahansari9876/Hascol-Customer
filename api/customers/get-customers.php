@@ -1,16 +1,12 @@
 <?php
-/**
- * GET CUSTOMERS API
- * POST /api/customers/get-customers.php
- * Body: { status?, customer_type?, verified?, search? }
- */
 
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
+// ✅ Sirf OPTIONS handle karein
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit(0);
+}
+
 header("Content-Type: application/json; charset=utf-8");
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
 
 error_reporting(E_ALL);
 ini_set('display_errors', 1);

@@ -1,19 +1,16 @@
 <?php
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
-header("Content-Type: application/json; charset=utf-8");
 
+// ✅ Sirf OPTIONS handle karein
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
-    exit;
+    exit(0);
 }
 
-// ─── Error reporting ───
+header("Content-Type: application/json; charset=utf-8");
+
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
-// ─── Includes ───
 require '../config.php';
 require '../db.php';
 

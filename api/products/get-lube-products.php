@@ -1,10 +1,12 @@
 <?php
-/**
- * GET LUBE PRODUCTS API
- * 
- * POST /api/products/get-lube-products.php
- * Body: { sub_category_id (optional) }
- */
+
+// ✅ Sirf OPTIONS handle karein
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit(0);
+}
+
+header("Content-Type: application/json; charset=utf-8");
 
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
