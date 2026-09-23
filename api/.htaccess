@@ -1,0 +1,14 @@
+Header set Access-Control-Allow-Origin "*"
+Header set Access-Control-Allow-Methods "GET, POST, OPTIONS"
+Header set Access-Control-Allow-Headers "Content-Type, Authorization"
+
+RewriteEngine On
+RewriteCond %{REQUEST_METHOD} OPTIONS
+RewriteRule ^(.*)$ $1 [R=200,L]
+
+<FilesMatch "^(config|db|\.htaccess)">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+php_flag display_errors off
