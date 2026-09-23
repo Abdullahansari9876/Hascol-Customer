@@ -1,26 +1,26 @@
 <?php
 /**
- * PLACE ORDER API (Dealer App — Coupon + Manual Discount)
+ * PLACE ORDER API (App Simple Bheje, API Calculates)
  * 
  * POST /api/dealer/place-order.php
  * 
- * Body: { 
+ * Body (App ONLY sends basic info):
+ * {
  *   dealer_id,
  *   customer_id,
- *   items: [...],
- *   delivery_type,
- *   delivery_address (optional),
+ *   items: [ { product_id, quantity } ],
+ *   delivery_type: "pickup" | "delivery",
+ *   delivery_address (optional - required if delivery),
  *   notes (optional),
- *   coupon_id (optional)          // 0 = no coupon
- *   discount (optional)           // Manual discount PERCENT (5 = 5%)
- *   discount_amount (optional)    // Manual discount FLAT ₹ (5 = ₹5)
+ *   coupon_id (optional)      // 0 = no coupon
+ *   discount (optional)        // Manual discount PERCENT (0 = no discount)
+ *   discount_amount (optional) // Manual discount FLAT Rs (0 = no discount)
  * }
  * 
  * NOTE:
- * - min_purchase check HATA diya gaya hai
- * - Coupon sirf customer_id + status se validate hoga
- * - discount = PERCENT
- * - discount_amount = FLAT ₹
+ * - API khud calculation karti hai
+ * - App sirf intent bhejta hai
+ * - Response me full breakdown milta hai
  */
 
 error_reporting(E_ALL);
@@ -36,15 +36,16 @@ if (!is_array($input)) {
     jsonResponse(['status'=>'error','message'=>'Invalid JSON input']);
 }
 
+// ─── App se basic input ───
 $dealerId              = (int)($input['dealer_id'] ?? 0);
 $customerId            = (int)($input['customer_id'] ?? 0);
-$couponId              = (int)($input['coupon_id'] ?? 0);
-$manualDiscountPercent = (float)($input['discount'] ?? 0);
-$manualDiscountAmount  = (float)($input['discount_amount'] ?? 0);
+$items                 = $input['items'] ?? [];
 $deliveryType          = trim($input['delivery_type'] ?? 'pickup');
 $deliveryAddress       = trim($input['delivery_address'] ?? '');
 $notes                 = trim($input['notes'] ?? '');
-$items                 = $input['items'] ?? [];
+$couponId              = (int)($input['coupon_id'] ?? 0);
+$manualDiscountPercent = (float)($input['discount'] ?? 0);
+$manualDiscountAmount  = (float)($input['discount_amount'] ?? 0);
 
 // ─── Validation ───
 if ($dealerId <= 0) {
@@ -101,6 +102,10 @@ if (!$customer) {
 
 $key      = $customer['player_key'];
 $playerId = $customer['player_id'];
+
+// ═══════════════════════════════════════════════════
+// ✅ API CALCULATES EVERYTHING FROM HERE
+// ═══════════════════════════════════════════════════
 
 // ─── Order Items Validate + Subtotal ───
 $validatedItems = [];
@@ -159,23 +164,14 @@ foreach ($items as $item) {
 $subtotal = round($subtotal, 2);
 
 // ─── Coupon Discount ───
-// ✅ min_purchase check HATA diya
-// ✅ Sirf id + customer_id + status check hoga
 $couponDiscount  = 0;
 $appliedCouponId = null;
 $appliedCode     = null;
 $couponType      = null;
 $couponValue     = 0;
-
-// ✅ Coupon applied flag
 $couponApplied   = 0;
-$couponUsed      = false;
 
 if ($couponId > 0) {
-    error_log("=== COUPON DEBUG START ===");
-    error_log("coupon_id: $couponId, customer_id: $customerId, subtotal: $subtotal");
-
-    // ✅ min_purchase hata diya
     $stmt = $db->prepare("
         SELECT * FROM coupons 
         WHERE id = ? 
@@ -189,18 +185,13 @@ if ($couponId > 0) {
     $stmt->close();
 
     if (!$coupon) {
-        error_log("Coupon NOT FOUND or not available");
         jsonResponse([
             'status'  => 'error',
             'message' => 'Invalid coupon or coupon not available for this customer'
         ]);
     }
 
-    error_log("Coupon found: " . json_encode($coupon));
-
-    // Expiry check
     if (!empty($coupon['valid_to']) && strtotime($coupon['valid_to']) < time()) {
-        error_log("Coupon EXPIRED: " . $coupon['valid_to']);
         jsonResponse(['status'=>'error','message'=>'Coupon has expired']);
     }
 
@@ -208,41 +199,33 @@ if ($couponId > 0) {
     $couponAmount  = (float)($coupon['discount_amount'] ?? 0);
 
     if ($couponPercent > 0) {
-        $couponDiscount = ($subtotal * $couponPercent) / 100;
+        $couponDiscount = round(($subtotal * $couponPercent) / 100, 2);
         $couponType     = 'percent';
         $couponValue    = $couponPercent;
     } elseif ($couponAmount > 0) {
-        $couponDiscount = $couponAmount;
+        $couponDiscount = round($couponAmount, 2);
         $couponType     = 'amount';
         $couponValue    = $couponAmount;
     }
 
-    $couponDiscount = round($couponDiscount, 2);
-
     $appliedCouponId = (int)$coupon['id'];
     $appliedCode     = $coupon['title'];
-
-    // ✅ Coupon laga flag set karo
     $couponApplied   = 1;
-    $couponUsed      = true;
-
-    error_log("Coupon applied: $couponDiscount ($couponType $couponValue)");
-    error_log("=== COUPON DEBUG END ===");
 }
 
 // ─── Manual Discount ───
-$manualDiscount = 0;
-$manualType     = null;
-$manualValue    = 0;
+$manualDiscount      = 0;
+$manualDiscountType  = null;
+$manualDiscountValue = 0;
 
 if ($manualDiscountPercent > 0) {
-    $manualDiscount = round(($subtotal * $manualDiscountPercent) / 100, 2);
-    $manualType     = 'percent';
-    $manualValue    = $manualDiscountPercent;
+    $manualDiscount      = round(($subtotal * $manualDiscountPercent) / 100, 2);
+    $manualDiscountType  = 'percent';
+    $manualDiscountValue = $manualDiscountPercent;
 } elseif ($manualDiscountAmount > 0) {
-    $manualDiscount = round($manualDiscountAmount, 2);
-    $manualType     = 'amount';
-    $manualValue    = $manualDiscountAmount;
+    $manualDiscount      = round($manualDiscountAmount, 2);
+    $manualDiscountType  = 'amount';
+    $manualDiscountValue = $manualDiscountAmount;
 }
 
 // ─── Total Discount ───
@@ -302,9 +285,13 @@ try {
         $stmt->close();
 
         // 3. Stock kam
-        $stmt = $db->prepare("UPDATE lube_products SET stock = stock - ? WHERE id = ?");
-        $stmt->bind_param("ii", $vi['quantity'], $vi['product_id']);
+        $stmt = $db->prepare("UPDATE lube_products SET stock = stock - ? WHERE id = ? AND stock >= ?");
+        $stmt->bind_param("iii", $vi['quantity'], $vi['product_id'], $vi['quantity']);
         $stmt->execute();
+
+        if ($stmt->affected_rows === 0) {
+            throw new Exception("Stock update failed for product ID {$vi['product_id']}");
+        }
         $stmt->close();
     }
 
@@ -353,40 +340,67 @@ try {
 
     $db->commit();
 
-    // ─── Success Response ───
+    // ═══════════════════════════════════════════════════
+    // ✅ SUCCESS RESPONSE (Full Breakdown)
+    // ═══════════════════════════════════════════════════
     jsonResponse([
         'status'  => 'success',
         'message' => 'Order placed successfully',
         'order'   => [
-            'id'                => (int)$orderId,
-            'order_number'      => $orderNumber,
-            'dealer_id'         => (int)$dealerId,
-            'dealer_name'       => $dealer['name'],
-            'station_name'      => $dealer['station_name'],
-            'customer_id'       => (int)$customerId,
-            'customer_name'     => $customer['name'],
-            'customer_mobile'   => $customer['mobile'],
+            // ─── Basic Order Info ───
+            'id'            => (int)$orderId,
+            'order_number'  => $orderNumber,
+
+            // ─── Customer ───
+            'customer' => [
+                'id'                => (int)$customer['id'],
+                'name'              => $customer['name'],
+                'mobile'            => $customer['mobile'],
+                'player_id'         => $customer['player_id'],
+                'total_coupons'     => (int)$customer['total_coupons'],
+                'remaining_coupons' => (int)$customer['remaining_coupons'] - ($appliedCouponId ? 1 : 0),
+                'used_coupons'      => (int)$customer['used_coupons'] + ($appliedCouponId ? 1 : 0),
+            ],
+
+            // ─── Dealer ───
+            'dealer' => [
+                'id'           => (int)$dealer['id'],
+                'name'         => $dealer['name'],
+                'station_name' => $dealer['station_name'],
+            ],
+
+            // ─── Amounts (Calculated by API) ───
             'subtotal'          => $subtotal,
             'coupon_discount'   => $couponDiscount,
-            'coupon_type'       => $couponType,
-            'coupon_value'      => $couponValue,
-            'manual_value'      => $manualValue,
+            'manual_discount'   => $manualDiscount,
             'total_discount'    => $totalDiscount,
             'total_amount'      => $totalAmount,
 
-            // ✅ coupon_applied: 1 = laga, 0 = nahi laga
-            'coupon_applied'    => $couponApplied,
-            // ✅ coupon_used: true / false
-            'coupon_used'       => $couponUsed,
+            // ─── Discount Breakdown (Full Details) ───
+            'discount_breakdown' => [
+                // Coupon wala
+                'coupon_used'           => (bool)$couponApplied,
+                'coupon_id'             => $appliedCouponId,
+                'coupon_code'           => $appliedCode,
+                'coupon_type'           => $couponType,
+                'coupon_value'          => $couponValue,
+                'coupon_discount'       => $couponDiscount,
 
-            'remaining_coupons' => (int)$customer['remaining_coupons'] - ($appliedCouponId ? 1 : 0),
-            'status'            => 'successful',
-            'payment_status'    => 'paid',
-            'delivery_type'     => $deliveryType,
-            'delivery_address'  => $deliveryAddress,
-            'notes'             => $notes,
-            'items'             => $validatedItems,
-            'created_at'        => date('Y-m-d H:i:s'),
+                // Manual discount wala
+                'manual_discount_used'  => (bool)($manualDiscount > 0),
+                'manual_discount_type'  => $manualDiscountType,
+                'manual_discount_value' => $manualDiscountValue,
+                'manual_discount'       => $manualDiscount,
+            ],
+
+            // ─── Order Details ───
+            'status'           => 'successful',
+            'payment_status'   => 'paid',
+            'delivery_type'    => $deliveryType,
+            'delivery_address' => $deliveryAddress,
+            'notes'            => $notes,
+            'items'            => $validatedItems,
+            'created_at'       => date('Y-m-d H:i:s'),
         ],
     ]);
 
