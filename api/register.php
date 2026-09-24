@@ -310,7 +310,7 @@ if ($couponCount == 0) {
         [
             'title' => 'Welcome 10% Off',
             'desc' => 'Get 10% discount on your first purchase',
-            'image_url' => 'http://192.168.18.14:8080/hascol_customer/uploads/advertisements/banner1.png',
+            'image_url' => 'https://hascol.allowance.flamboyant-spence.92-205-119-218.plesk.page/uploads/advertisements/banner1.png',
             'percent' => 10.00,
             'amount' => 0.00,
             'min' => 500.00
@@ -318,7 +318,7 @@ if ($couponCount == 0) {
         [
             'title' => 'Engine Oil 5% Off',
             'desc' => 'Get 5% discount on engine oil',
-            'image_url' => 'http://192.168.18.14:8080/hascol_customer/uploads/advertisements/banner2.png',
+            'image_url' => 'https://hascol.allowance.flamboyant-spence.92-205-119-218.plesk.page/uploads/advertisements/banner2.png',
             'percent' => 5.00,
             'amount' => 0.00,
             'min' => 1000.00
@@ -326,7 +326,7 @@ if ($couponCount == 0) {
         [
             'title' => 'Fuel 3% Off',
             'desc' => 'Get 3% discount on fuel',
-            'image_url' => 'http://192.168.18.14:8080/hascol_customer/uploads/advertisements/banner3.png',
+            'image_url' => 'https://hascol.allowance.flamboyant-spence.92-205-119-218.plesk.page/uploads/advertisements/banner3.png',
             'percent' => 3.00,
             'amount' => 0.00,
             'min' => 500.00
