@@ -315,13 +315,18 @@ try {
 
         // Step E: Update customer counters
         $stmt = $db->prepare("
-            UPDATE customers 
-            SET remaining_coupons = remaining_coupons - 1, 
-                used_coupons = used_coupons + 1 
-            WHERE id = ?
-        ");
+    UPDATE customers 
+    SET remaining_coupons = remaining_coupons - 1, 
+        used_coupons = used_coupons + 1 
+    WHERE id = ? AND remaining_coupons > 0
+");
         $stmt->bind_param("i", $customerId);
         $stmt->execute();
+
+        if ($stmt->affected_rows === 0) {
+            $stmt->close();
+            throw new Exception('No remaining coupons available for this customer.');
+        }
         $stmt->close();
     }
 
