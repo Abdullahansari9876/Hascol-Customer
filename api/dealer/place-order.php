@@ -1,7 +1,7 @@
 <?php
 /**
  * PLACE ORDER API (Frontend Calculates, Backend Just Saves)
- * + Coupon auto-calculate fallback (agar frontend discount 0 bheje)
+ * + Coupon validation to prevent double-use
  * 
  * POST /api/dealer/place-order.php
  * 
@@ -143,8 +143,9 @@ foreach ($items as $item) {
 // ═══════════════════════════════════════════════════
 // ✅ COUPON AUTO-CALCULATE (agar frontend ne 0 bheja)
 // ═══════════════════════════════════════════════════
-if ($couponId > 0 && $couponDiscount <= 0) {
+if ($couponId > 0) {
 
+    // 1. Fetch coupon from database (must belong to this customer)
     $stmt = $db->prepare("
         SELECT id, title, discount_percent, discount_amount, valid_to, status
         FROM coupons 
@@ -156,37 +157,44 @@ if ($couponId > 0 && $couponDiscount <= 0) {
     $couponRow = $stmt->get_result()->fetch_assoc();
     $stmt->close();
 
+    // 2. Does the coupon exist?
     if (!$couponRow) {
         jsonResponse(['status' => 'error', 'message' => 'Invalid coupon for this customer']);
     }
-    if ($couponRow['status'] !== 'available') {
-        jsonResponse(['status' => 'error', 'message' => 'Coupon already used']);
-    }
-    if (!empty($couponRow['valid_to']) && strtotime($couponRow['valid_to']) < time()) {
-        jsonResponse(['status' => 'error', 'message' => 'Coupon expired']);
+
+    // 3. 🔥 MOST IMPORTANT — Is the coupon already used?
+    if ($couponRow['status'] === 'used') {
+        jsonResponse([
+            'status' => 'error',
+            'message' => 'This coupon has already been used. It cannot be used again.'
+        ]);
     }
 
-    // Auto-fill coupon_code if empty
+    // 4. Is the coupon available?
+    if ($couponRow['status'] !== 'available') {
+        jsonResponse([
+            'status' => 'error',
+            'message' => 'Coupon is not available (Status: ' . $couponRow['status'] . ')'
+        ]);
+    }
+
+    // 5. Has the coupon expired?
+    if (!empty($couponRow['valid_to']) && strtotime($couponRow['valid_to']) < time()) {
+        jsonResponse(['status' => 'error', 'message' => 'This coupon has expired.']);
+    }
+
+    // 6. Auto-fill coupon_code if empty
     if (empty($couponCode)) {
         $couponCode = $couponRow['title'];
     }
 
-    // Calculate discount
-    $cpPercent = (float) $couponRow['discount_percent'];
-    $cpAmount = (float) $couponRow['discount_amount'];
-
-    if ($cpPercent > 0) {
-        $couponDiscount = round(($subtotal * $cpPercent) / 100, 2);
-    } elseif ($cpAmount > 0) {
-        $couponDiscount = round($cpAmount, 2);
+    // 7. Safety check — couponId > 0 but discount is 0? Something is wrong
+    if ($couponDiscount <= 0) {
+        jsonResponse([
+            'status' => 'error',
+            'message' => 'Coupon was applied but discount was not calculated. Please try again from the App.'
+        ]);
     }
-
-    // Recompute totals
-    $totalDiscount = round($couponDiscount + $manualDiscount, 2);
-    if ($totalDiscount > $subtotal) {
-        $totalDiscount = $subtotal;
-    }
-    $totalAmount = round($subtotal - $totalDiscount, 2);
 }
 
 // ═══════════════════════════════════════════════════
@@ -272,18 +280,40 @@ try {
     }
 
     // 4. Coupon mark used (if any)
+    // 4. Coupon mark used (if any) — WITH RACE CONDITION PROTECTION
     if ($couponId > 0) {
+
+        // Step A: Lock the row (so no other request can use it at the same time)
+        $stmt = $db->prepare("SELECT status FROM coupons WHERE id = ? FOR UPDATE");
+        $stmt->bind_param("i", $couponId);
+        $stmt->execute();
+        $lockedCoupon = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        // Step B: After lock, check again — is it still available?
+        if (!$lockedCoupon || $lockedCoupon['status'] !== 'available') {
+            throw new Exception('This coupon has already been used. It cannot be used again.');
+        }
+
+        // Step C: Now safely update — with "AND status = 'available'" condition
         $stmt = $db->prepare("
             UPDATE coupons 
             SET status = 'used', 
                 used_at = NOW(), 
                 used_at_station = ? 
-            WHERE id = ?
+            WHERE id = ? AND status = 'available'
         ");
         $stmt->bind_param("si", $dealer['station_name'], $couponId);
         $stmt->execute();
+
+        // Step D: If 0 rows affected, someone else used it first
+        if ($stmt->affected_rows === 0) {
+            $stmt->close();
+            throw new Exception('This coupon has already been used (race condition detected).');
+        }
         $stmt->close();
 
+        // Step E: Update customer counters
         $stmt = $db->prepare("
             UPDATE customers 
             SET remaining_coupons = remaining_coupons - 1, 
