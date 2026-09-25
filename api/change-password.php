@@ -8,9 +8,6 @@
  *   new_password: "newpass456",
  *   confirm_password: "newpass456"
  * }
- * 
- * ⚠️ WARNING: Ye unsafe hai. Agar 2 customers ke passwords same hain,
- * to dono ka password change ho sakta hai.
  */
 
 error_reporting(E_ALL);

@@ -250,10 +250,6 @@ $customerId = $customerRow['id'];
 // ✅ STEP 3: Referral insert/update
 // ═══════════════════════════════════════════════════
 
-// ═══════════════════════════════════════════════════
-// ✅ STEP 3: Referral insert/update
-// ═══════════════════════════════════════════════════
-
 if ($referralRecordId) {
     // ✅ User-provided referral → HAMESHA mark used karo
     // (OTP ki condition hata di — chahe skip_otp 0 ho ya 1)
