@@ -279,7 +279,6 @@ try {
         $stmt->close();
     }
 
-    // 4. Coupon mark used (if any)
     // 4. Coupon mark used (if any) — WITH RACE CONDITION PROTECTION
     if ($couponId > 0) {
 
