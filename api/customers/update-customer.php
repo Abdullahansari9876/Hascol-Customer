@@ -53,7 +53,7 @@ if (!empty($errors)) {
 }
 
 // Check exists
-$stmt = $db->prepare("SELECT id, verified, verified_at FROM customers WHERE id = ? LIMIT 1");
+$stmt = $db->prepare("SELECT id, verified, verified_at FROM hascol_customer WHERE id = ? LIMIT 1");
 $stmt->bind_param("i", $id);
 $stmt->execute();
 $existing = $stmt->get_result()->fetch_assoc();
@@ -65,7 +65,7 @@ if (!$existing) {
 }
 
 // Duplicate player_key
-$stmt = $db->prepare("SELECT id FROM customers WHERE player_key = ? AND id != ? LIMIT 1");
+$stmt = $db->prepare("SELECT id FROM hascol_customer WHERE player_key = ? AND id != ? LIMIT 1");
 $stmt->bind_param("si", $player_key, $id);
 $stmt->execute();
 if ($stmt->get_result()->fetch_assoc()) {
@@ -76,7 +76,7 @@ if ($stmt->get_result()->fetch_assoc()) {
 $stmt->close();
 
 // Duplicate mobile
-$stmt = $db->prepare("SELECT id FROM customers WHERE mobile = ? AND id != ? LIMIT 1");
+$stmt = $db->prepare("SELECT id FROM hascol_customer WHERE mobile = ? AND id != ? LIMIT 1");
 $stmt->bind_param("si", $mobile, $id);
 $stmt->execute();
 if ($stmt->get_result()->fetch_assoc()) {
@@ -88,7 +88,7 @@ $stmt->close();
 
 // Duplicate email
 if (!empty($email)) {
-    $stmt = $db->prepare("SELECT id FROM customers WHERE email = ? AND id != ? LIMIT 1");
+    $stmt = $db->prepare("SELECT id FROM hascol_customer WHERE email = ? AND id != ? LIMIT 1");
     $stmt->bind_param("si", $email, $id);
     $stmt->execute();
     if ($stmt->get_result()->fetch_assoc()) {
@@ -109,7 +109,7 @@ if ($verified === 1 && (int)$existing['verified'] === 0) {
 if (!empty($password)) {
     $hashed = password_hash($password, PASSWORD_DEFAULT);
     $stmt = $db->prepare("
-        UPDATE customers 
+        UPDATE hascol_customer 
         SET player_key = ?, player_id = ?, name = ?, email = ?, mobile = ?, password = ?,
             imei = ?, cnic = ?, address = ?, coupon_no = ?, customer_type = ?, 
             verified = ?, status = ?, verified_at = ?, updated_at = NOW()
@@ -122,7 +122,7 @@ if (!empty($password)) {
     );
 } else {
     $stmt = $db->prepare("
-        UPDATE customers 
+        UPDATE hascol_customer 
         SET player_key = ?, player_id = ?, name = ?, email = ?, mobile = ?,
             imei = ?, cnic = ?, address = ?, coupon_no = ?, customer_type = ?, 
             verified = ?, status = ?, verified_at = ?, updated_at = NOW()

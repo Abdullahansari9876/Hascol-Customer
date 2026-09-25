@@ -30,7 +30,7 @@ if ($advertisementId <= 0) {
 $stmt = $db->prepare("
     SELECT id, player_key, player_id, name, mobile, 
            total_coupons, remaining_coupons, used_coupons 
-    FROM customers 
+    FROM hascol_customer 
     WHERE id = ? LIMIT 1
 ");
 $stmt->bind_param("i", $customerId);
@@ -107,7 +107,7 @@ $stmt->close();
 
 // ─── Customers counts update karein ───
 $stmt = $db->prepare("
-    UPDATE customers 
+    UPDATE hascol_customer 
     SET total_coupons = total_coupons + 1, 
         remaining_coupons = remaining_coupons + 1 
     WHERE id = ?

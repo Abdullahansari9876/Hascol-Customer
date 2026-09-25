@@ -71,7 +71,7 @@ if ($deliveryType === 'delivery' && empty($deliveryAddress)) {
 }
 
 // ─── Dealer Check ───
-$stmt = $db->prepare("SELECT id, name, station_name FROM dealers WHERE id = ? AND status = 'active' LIMIT 1");
+$stmt = $db->prepare("SELECT id, name, station_name FROM hascol_dealers WHERE id = ? AND status = 'active' LIMIT 1");
 $stmt->bind_param("i", $dealerId);
 $stmt->execute();
 $dealer = $stmt->get_result()->fetch_assoc();
@@ -85,7 +85,7 @@ if (!$dealer) {
 $stmt = $db->prepare("
     SELECT id, player_key, player_id, name, mobile, 
            total_coupons, remaining_coupons, used_coupons 
-    FROM customers 
+    FROM hascol_customer 
     WHERE id = ? LIMIT 1
 ");
 $stmt->bind_param("i", $customerId);
@@ -314,7 +314,7 @@ try {
 
         // Step E: Update customer counters
         $stmt = $db->prepare("
-    UPDATE customers 
+    UPDATE hascol_customer 
     SET remaining_coupons = remaining_coupons - 1, 
         used_coupons = used_coupons + 1 
     WHERE id = ? AND remaining_coupons > 0

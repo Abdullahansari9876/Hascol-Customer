@@ -29,7 +29,7 @@ if (!in_array($status, ['all', 'successful', 'pending', 'failed'])) {
 }
 
 // Dealer check
-$stmt = $db->prepare("SELECT id, name, station_name FROM dealers WHERE id = ? AND status = 'active' LIMIT 1");
+$stmt = $db->prepare("SELECT id, name, station_name FROM hascol_dealers WHERE id = ? AND status = 'active' LIMIT 1");
 $stmt->bind_param("i", $dealerId);
 $stmt->execute();
 $dealer = $stmt->get_result()->fetch_assoc();

@@ -33,7 +33,7 @@ if (!in_array($status, ['all', 'successful', 'pending', 'failed'])) {
 $stmt = $db->prepare("
     SELECT id, name, mobile, 
            total_coupons, remaining_coupons, used_coupons 
-    FROM customers 
+    FROM hascol_customer 
     WHERE id = ? 
     LIMIT 1
 ");

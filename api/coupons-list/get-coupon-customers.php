@@ -16,16 +16,16 @@ require '../db.php';
 
 $sql = "
     SELECT DISTINCT c.id, c.name, c.mobile, c.email
-    FROM customers c
+    FROM hascol_customer c
     INNER JOIN coupons cp ON cp.customer_id = c.id
     WHERE cp.customer_id IS NOT NULL
     ORDER BY c.name ASC
 ";
 $result = $db->query($sql);
 
-$customers = [];
+$hascol_customer = [];
 while ($row = $result->fetch_assoc()) {
-    $customers[] = [
+    $hascol_customer[] = [
         'id'     => (int)$row['id'],
         'name'   => $row['name'],
         'mobile' => $row['mobile'] ?? '',
@@ -36,6 +36,6 @@ while ($row = $result->fetch_assoc()) {
 jsonResponse([
     'status'    => 'success',
     'message'   => 'Customers fetched successfully',
-    'total'     => count($customers),
-    'customers' => $customers,
+    'total'     => count($hascol_customer),
+    'hascol_customer' => $hascol_customer,
 ]);

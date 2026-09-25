@@ -106,7 +106,7 @@ $stmt->close();
 
 // ─── MySQLi mein customer verified mark karein ───
 $stmt = $db->prepare("
-    UPDATE customers 
+    UPDATE hascol_customer 
     SET verified = 1, verified_at = NOW(), last_login = NOW() 
     WHERE player_key = ?
 ");
@@ -131,7 +131,7 @@ $stmt->close();
 fbDelete("otps/$key");
 
 // ─── Firebase mein customer verified mark karein (backup) ───
-fbPatch("customers/$key", [
+fbPatch("hascol_customer/$key", [
     'verified'    => true,
     'verified_at' => date('Y-m-d H:i:s'),
     'last_login'  => date('Y-m-d H:i:s'),
@@ -146,7 +146,7 @@ fbSet("sessions/$token", [
 ]);
 
 // ─── Customer detail lein ───
-$stmt = $db->prepare("SELECT * FROM customers WHERE player_key = ?");
+$stmt = $db->prepare("SELECT * FROM hascol_customer WHERE player_key = ?");
 $stmt->bind_param("s", $key);
 $stmt->execute();
 $result = $stmt->get_result();

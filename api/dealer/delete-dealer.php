@@ -23,7 +23,7 @@ if ($id <= 0) {
 }
 
 // Check exists
-$stmt = $db->prepare("SELECT id, name FROM dealers WHERE id = ? LIMIT 1");
+$stmt = $db->prepare("SELECT id, name FROM hascol_dealers WHERE id = ? LIMIT 1");
 $stmt->bind_param("i", $id);
 $stmt->execute();
 $row = $stmt->get_result()->fetch_assoc();
@@ -35,7 +35,7 @@ if (!$row) {
 }
 
 // Delete
-$stmt = $db->prepare("DELETE FROM dealers WHERE id = ?");
+$stmt = $db->prepare("DELETE FROM hascol_dealers WHERE id = ?");
 $stmt->bind_param("i", $id);
 
 if ($stmt->execute()) {

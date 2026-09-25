@@ -22,7 +22,7 @@ if ($id <= 0) {
     exit;
 }
 
-$stmt = $db->prepare("SELECT id, name FROM customers WHERE id = ? LIMIT 1");
+$stmt = $db->prepare("SELECT id, name FROM hascol_customer WHERE id = ? LIMIT 1");
 $stmt->bind_param("i", $id);
 $stmt->execute();
 $row = $stmt->get_result()->fetch_assoc();
@@ -33,7 +33,7 @@ if (!$row) {
     exit;
 }
 
-$stmt = $db->prepare("DELETE FROM customers WHERE id = ?");
+$stmt = $db->prepare("DELETE FROM hascol_customer WHERE id = ?");
 $stmt->bind_param("i", $id);
 
 if ($stmt->execute()) {

@@ -44,7 +44,7 @@ if (!preg_match('/[A-Za-z]/', $newPassword) || !preg_match('/[0-9]/', $newPasswo
 $ip = getClientIp();
 
 // ─── Mobile se customer dhoondein ───
-$stmt = $db->prepare("SELECT * FROM customers WHERE mobile = ? LIMIT 1");
+$stmt = $db->prepare("SELECT * FROM hascol_customer WHERE mobile = ? LIMIT 1");
 $stmt->bind_param("s", $mobile);
 $stmt->execute();
 $customer = $stmt->get_result()->fetch_assoc();
@@ -64,7 +64,7 @@ $key      = $customer['player_key'];
 
 $newPasswordHash = password_hash($newPassword, PASSWORD_BCRYPT);
 
-$stmt = $db->prepare("UPDATE customers SET password = ?, updated_at = NOW() WHERE mobile = ?");
+$stmt = $db->prepare("UPDATE hascol_customer SET password = ?, updated_at = NOW() WHERE mobile = ?");
 $stmt->bind_param("ss", $newPasswordHash, $mobile);
 if (!$stmt->execute()) {
     jsonResponse(['status'=>'error','message'=>'Password update failed: ' . $stmt->error]);
@@ -78,7 +78,7 @@ $stmt->execute();
 $stmt->close();
 
 // ─── Firebase update ───
-fbPatch("customers/$key", [
+fbPatch("hascol_customer/$key", [
     'password_updated_at' => date('Y-m-d H:i:s'),
 ]);
 

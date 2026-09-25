@@ -56,7 +56,7 @@ if (!empty($errors)) {
 }
 
 // Duplicate mobile check
-$stmt = $db->prepare("SELECT id FROM dealers WHERE mobile = ? LIMIT 1");
+$stmt = $db->prepare("SELECT id FROM hascol_dealers WHERE mobile = ? LIMIT 1");
 $stmt->bind_param("s", $mobile);
 $stmt->execute();
 if ($stmt->get_result()->fetch_assoc()) {
@@ -68,7 +68,7 @@ $stmt->close();
 
 // Duplicate email check
 if (!empty($email)) {
-    $stmt = $db->prepare("SELECT id FROM dealers WHERE email = ? LIMIT 1");
+    $stmt = $db->prepare("SELECT id FROM hascol_dealers WHERE email = ? LIMIT 1");
     $stmt->bind_param("s", $email);
     $stmt->execute();
     if ($stmt->get_result()->fetch_assoc()) {
@@ -84,7 +84,7 @@ $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
 
 // Insert
 $stmt = $db->prepare("
-    INSERT INTO dealers (name, mobile, email, password, station_name, address, city, status, created_at, updated_at)
+    INSERT INTO hascol_dealers (name, mobile, email, password, station_name, address, city, status, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
 ");
 $stmt->bind_param("ssssssss",

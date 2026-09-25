@@ -14,19 +14,19 @@ ini_set('display_errors', 1);
 require '../config.php';
 require '../db.php';
 
-// Only customers who have used at least one referral
+// Only hascol_customer who have used at least one referral
 $sql = "
     SELECT DISTINCT c.id, c.name, c.mobile, c.email
-    FROM customers c
+    FROM hascol_customer c
     INNER JOIN referral_numbers r ON r.used_by_customer_id = c.id
     WHERE r.is_used = 1 AND r.used_by_customer_id IS NOT NULL
     ORDER BY c.name ASC
 ";
 $result = $db->query($sql);
 
-$customers = [];
+$hascol_customer = [];
 while ($row = $result->fetch_assoc()) {
-    $customers[] = [
+    $hascol_customer[] = [
         'id'     => (int)$row['id'],
         'name'   => $row['name'],
         'mobile' => $row['mobile'] ?? '',
@@ -37,6 +37,6 @@ while ($row = $result->fetch_assoc()) {
 jsonResponse([
     'status'    => 'success',
     'message'   => 'Customers fetched successfully',
-    'total'     => count($customers),
-    'customers' => $customers,
+    'total'     => count($hascol_customer),
+    'hascol_customer' => $hascol_customer,
 ]);

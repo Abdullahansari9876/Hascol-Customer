@@ -45,7 +45,7 @@ $stmt = $db->prepare("
     SELECT id, player_id, name, email, mobile, imei, verified, status,
            total_coupons, remaining_coupons, used_coupons,
            created_at, verified_at, last_login
-    FROM customers 
+    FROM hascol_customer 
     WHERE player_key = ? LIMIT 1
 ");
 $stmt->bind_param("s", $key);

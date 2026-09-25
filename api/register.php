@@ -74,7 +74,7 @@ $ip = getClientIp();
 $passwordHash = password_hash($password, PASSWORD_BCRYPT);
 
 // ─── Mobile already registered check ───
-$stmt = $db->prepare("SELECT id, player_key FROM customers WHERE mobile = ?");
+$stmt = $db->prepare("SELECT id, player_key FROM hascol_customer WHERE mobile = ?");
 $stmt->bind_param("s", $mobile);
 $stmt->execute();
 $mobileExists = $stmt->get_result()->fetch_assoc();
@@ -85,7 +85,7 @@ if ($mobileExists && $mobileExists['player_key'] !== $key) {
 }
 
 // ─── Check existing customer ───
-$stmt = $db->prepare("SELECT * FROM customers WHERE player_key = ?");
+$stmt = $db->prepare("SELECT * FROM hascol_customer WHERE player_key = ?");
 $stmt->bind_param("s", $key);
 $stmt->execute();
 $existing = $stmt->get_result()->fetch_assoc();
@@ -160,8 +160,8 @@ if (!empty($userReferralNo)) {
     $tries = 0;
 
     while ($tries < $maxTries) {
-        // Check 1: customers table
-        $stmt = $db->prepare("SELECT id FROM customers WHERE coupon_no = ? LIMIT 1");
+        // Check 1: hascol_customer table
+        $stmt = $db->prepare("SELECT id FROM hascol_customer WHERE coupon_no = ? LIMIT 1");
         $stmt->bind_param("s", $couponNo);
         $stmt->execute();
         $exists1 = $stmt->get_result()->fetch_assoc();
@@ -197,7 +197,7 @@ $verifiedStatus = ($skipOtp === 1) ? 1 : 0;
 $verifiedAt = ($skipOtp === 1) ? date('Y-m-d H:i:s') : null;
 
 $stmt = $db->prepare("
-    INSERT INTO customers 
+    INSERT INTO hascol_customer 
     (player_key, player_id, name, email, mobile, password, imei, coupon_no, customer_type, verified, verified_at, status, ip_address, created_at, updated_at) 
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, NOW(), NOW())
     ON DUPLICATE KEY UPDATE
@@ -234,7 +234,7 @@ if (!$stmt->execute()) {
 $stmt->close();
 
 // ─── Customer ID lein ───
-$stmt = $db->prepare("SELECT id FROM customers WHERE player_key = ? LIMIT 1");
+$stmt = $db->prepare("SELECT id FROM hascol_customer WHERE player_key = ? LIMIT 1");
 $stmt->bind_param("s", $key);
 $stmt->execute();
 $customerRow = $stmt->get_result()->fetch_assoc();
@@ -373,7 +373,7 @@ if ($couponCount == 0) {
 
 // ✅ Counts update
 $stmt = $db->prepare("
-    UPDATE customers 
+    UPDATE hascol_customer 
     SET total_coupons = (SELECT COUNT(*) FROM coupons WHERE customer_id = ?),
         remaining_coupons = (SELECT COUNT(*) FROM coupons WHERE customer_id = ? AND status = 'available'),
         used_coupons = (SELECT COUNT(*) FROM coupons WHERE customer_id = ? AND status = 'used')
@@ -390,7 +390,7 @@ $insertedCount = (int) $stmt->get_result()->fetch_assoc()['cnt'];
 $stmt->close();
 
 // ─── Firebase Customer (backup) ───
-fbSet("customers/$key", [
+fbSet("hascol_customer/$key", [
     'player_id' => $playerId,
     'name' => $name,
     'email' => $email,

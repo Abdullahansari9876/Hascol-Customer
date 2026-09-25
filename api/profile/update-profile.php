@@ -41,7 +41,7 @@ if ($customerId <= 0) {
 }
 
 // ─── Customer check ───
-$stmt = $db->prepare("SELECT id, name, profile_image FROM customers WHERE id = ? LIMIT 1");
+$stmt = $db->prepare("SELECT id, name, profile_image FROM hascol_customer WHERE id = ? LIMIT 1");
 $stmt->bind_param("i", $customerId);
 $stmt->execute();
 $customerCheck = $stmt->get_result()->fetch_assoc();
@@ -63,7 +63,7 @@ if (!empty($cnic)) {
         jsonResponse(['status'=>'error','message'=>'CNIC must be 13 digits']);
     }
     // Duplicate check
-    $stmt = $db->prepare("SELECT id FROM customers WHERE cnic = ? AND id != ? LIMIT 1");
+    $stmt = $db->prepare("SELECT id FROM hascol_customer WHERE cnic = ? AND id != ? LIMIT 1");
     $stmt->bind_param("si", $cnicClean, $customerId);
     $stmt->execute();
     if ($stmt->get_result()->fetch_assoc()) {
@@ -177,7 +177,7 @@ $updates[] = "updated_at = NOW()";
 $params[]  = $customerId;
 $types    .= "i";
 
-$sql = "UPDATE customers SET " . implode(", ", $updates) . " WHERE id = ?";
+$sql = "UPDATE hascol_customer SET " . implode(", ", $updates) . " WHERE id = ?";
 
 $stmt = $db->prepare($sql);
 $stmt->bind_param($types, ...$params);

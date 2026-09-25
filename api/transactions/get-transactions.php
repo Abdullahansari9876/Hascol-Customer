@@ -83,8 +83,8 @@ $sql = "
         d.mobile AS dealer_mobile,
         d.station_name AS dealer_station
     FROM transactions t
-    LEFT JOIN customers c ON c.id = t.customer_id
-    LEFT JOIN dealers d ON d.id = t.dealer_id
+    LEFT JOIN hascol_customer c ON c.id = t.customer_id
+    LEFT JOIN hascol_dealers d ON d.id = t.dealer_id
 ";
 
 if (!empty($where)) {

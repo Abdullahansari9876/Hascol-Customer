@@ -54,7 +54,7 @@ if (!empty($errors)) {
 }
 
 // Duplicate checks
-$stmt = $db->prepare("SELECT id FROM customers WHERE player_key = ? LIMIT 1");
+$stmt = $db->prepare("SELECT id FROM hascol_customer WHERE player_key = ? LIMIT 1");
 $stmt->bind_param("s", $player_key);
 $stmt->execute();
 if ($stmt->get_result()->fetch_assoc()) {
@@ -65,7 +65,7 @@ if ($stmt->get_result()->fetch_assoc()) {
 $stmt->close();
 
 if (!empty($mobile)) {
-    $stmt = $db->prepare("SELECT id FROM customers WHERE mobile = ? LIMIT 1");
+    $stmt = $db->prepare("SELECT id FROM hascol_customer WHERE mobile = ? LIMIT 1");
     $stmt->bind_param("s", $mobile);
     $stmt->execute();
     if ($stmt->get_result()->fetch_assoc()) {
@@ -77,7 +77,7 @@ if (!empty($mobile)) {
 }
 
 if (!empty($email)) {
-    $stmt = $db->prepare("SELECT id FROM customers WHERE email = ? LIMIT 1");
+    $stmt = $db->prepare("SELECT id FROM hascol_customer WHERE email = ? LIMIT 1");
     $stmt->bind_param("s", $email);
     $stmt->execute();
     if ($stmt->get_result()->fetch_assoc()) {
@@ -92,7 +92,7 @@ $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
 $verifiedAt = $verified ? date('Y-m-d H:i:s') : null;
 
 $stmt = $db->prepare("
-    INSERT INTO customers 
+    INSERT INTO hascol_customer 
     (player_key, player_id, name, email, mobile, password, imei, cnic, address, coupon_no, 
      customer_type, verified, status, ip_address, created_at, updated_at, verified_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?)

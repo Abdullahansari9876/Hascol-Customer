@@ -9,7 +9,7 @@ ini_set('memory_limit', '2048M');
 
 // Database configuration
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'hascol_customers');   // ⚠️ Apna database name
+define('DB_NAME', 'hascol_bridge');   // ⚠️ Apna database name
 define('DB_USER', 'Abdullah');          // ⚠️ Apna MySQL username
 define('DB_PASS', 'Allah786@');                    // ⚠️ Apna MySQL password
 

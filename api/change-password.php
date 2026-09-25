@@ -49,8 +49,8 @@ if ($newPassword === $currentPassword) {
 
 $ip = getClientIp();
 
-// ─── ⚠️ Saare customers lein aur current password match karein ───
-$stmt = $db->prepare("SELECT * FROM customers WHERE verified = 1");
+// ─── ⚠️ Saare hascol_customer lein aur current password match karein ───
+$stmt = $db->prepare("SELECT * FROM hascol_customer WHERE verified = 1");
 $stmt->execute();
 $result = $stmt->get_result();
 
@@ -75,7 +75,7 @@ $newPasswordHash = password_hash($newPassword, PASSWORD_BCRYPT);
 
 // ─── MySQL mein password update karein ───
 $stmt = $db->prepare("
-    UPDATE customers 
+    UPDATE hascol_customer 
     SET password = ?, updated_at = NOW() 
     WHERE player_id = ?
 ");
@@ -92,7 +92,7 @@ $stmt->execute();
 $stmt->close();
 
 // ─── Firebase mein update karein (backup) ───
-fbPatch("customers/$key", [
+fbPatch("hascol_customer/$key", [
     'password_updated_at' => date('Y-m-d H:i:s'),
     'updated_at'          => date('Y-m-d H:i:s'),
 ]);

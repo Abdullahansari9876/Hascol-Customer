@@ -28,7 +28,7 @@ if ($customerId <= 0) {
 $stmt = $db->prepare("
     SELECT id, name, mobile, 
            total_coupons, remaining_coupons, used_coupons 
-    FROM customers 
+    FROM hascol_customer 
     WHERE id = ? 
     LIMIT 1
 ");
@@ -72,7 +72,7 @@ while ($row = $result->fetch_assoc()) {
             d.name AS dealer_name,
             d.station_name
         FROM orders o
-        LEFT JOIN dealers d ON d.id = o.dealer_id
+        LEFT JOIN hascol_dealers d ON d.id = o.dealer_id
         WHERE o.coupon_id = ? AND o.customer_id = ?
         ORDER BY o.id DESC
         LIMIT 1

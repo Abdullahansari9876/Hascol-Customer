@@ -53,7 +53,7 @@ $sql = "SELECT id, player_key, player_id, name, email, profile_image, mobile,
                imei, cnic, address, coupon_no, customer_type, verified, status, 
                ip_address, created_at, updated_at, verified_at,
                total_coupons, remaining_coupons, used_coupons, last_login
-        FROM customers";
+        FROM hascol_customer";
 
 if (!empty($where)) {
     $sql .= " WHERE " . implode(" AND ", $where);
@@ -67,9 +67,9 @@ if (!empty($params)) {
 $stmt->execute();
 $result = $stmt->get_result();
 
-$customers = [];
+$hascol_customer = [];
 while ($row = $result->fetch_assoc()) {
-    $customers[] = [
+    $hascol_customer[] = [
         'id'                => (int)$row['id'],
         'player_key'        => $row['player_key'],
         'player_id'         => $row['player_id'],
@@ -99,6 +99,6 @@ $stmt->close();
 jsonResponse([
     'status'    => 'success',
     'message'   => 'Customers fetched successfully',
-    'total'     => count($customers),
-    'customers' => $customers,
+    'total'     => count($hascol_customer),
+    'hascol_customer' => $hascol_customer,
 ]);

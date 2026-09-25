@@ -24,7 +24,7 @@ if ($customerId <= 0) {
 // ─── Customer check ───
 $stmt = $db->prepare("
     SELECT id, name, mobile, total_coupons, remaining_coupons, used_coupons 
-    FROM customers 
+    FROM hascol_customer 
     WHERE id = ? LIMIT 1
 ");
 $stmt->bind_param("i", $customerId);

@@ -46,7 +46,7 @@ if (!empty($errors)) {
 }
 
 // Check exists
-$stmt = $db->prepare("SELECT id FROM dealers WHERE id = ? LIMIT 1");
+$stmt = $db->prepare("SELECT id FROM hascol_dealers WHERE id = ? LIMIT 1");
 $stmt->bind_param("i", $id);
 $stmt->execute();
 if (!$stmt->get_result()->fetch_assoc()) {
@@ -57,7 +57,7 @@ if (!$stmt->get_result()->fetch_assoc()) {
 $stmt->close();
 
 // Duplicate mobile
-$stmt = $db->prepare("SELECT id FROM dealers WHERE mobile = ? AND id != ? LIMIT 1");
+$stmt = $db->prepare("SELECT id FROM hascol_dealers WHERE mobile = ? AND id != ? LIMIT 1");
 $stmt->bind_param("si", $mobile, $id);
 $stmt->execute();
 if ($stmt->get_result()->fetch_assoc()) {
@@ -69,7 +69,7 @@ $stmt->close();
 
 // Duplicate email
 if (!empty($email)) {
-    $stmt = $db->prepare("SELECT id FROM dealers WHERE email = ? AND id != ? LIMIT 1");
+    $stmt = $db->prepare("SELECT id FROM hascol_dealers WHERE email = ? AND id != ? LIMIT 1");
     $stmt->bind_param("si", $email, $id);
     $stmt->execute();
     if ($stmt->get_result()->fetch_assoc()) {
@@ -84,7 +84,7 @@ if (!empty($email)) {
 if (!empty($password)) {
     $hashed = password_hash($password, PASSWORD_DEFAULT);
     $stmt = $db->prepare("
-        UPDATE dealers 
+        UPDATE hascol_dealers 
         SET name = ?, mobile = ?, email = ?, password = ?, station_name = ?, address = ?, city = ?, status = ?, updated_at = NOW()
         WHERE id = ?
     ");
@@ -93,7 +93,7 @@ if (!empty($password)) {
     );
 } else {
     $stmt = $db->prepare("
-        UPDATE dealers 
+        UPDATE hascol_dealers 
         SET name = ?, mobile = ?, email = ?, station_name = ?, address = ?, city = ?, status = ?, updated_at = NOW()
         WHERE id = ?
     ");

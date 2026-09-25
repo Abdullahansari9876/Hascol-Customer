@@ -33,7 +33,7 @@ if (!preg_match('/^(03[0-9]{9}|\+923[0-9]{9})$/', $mobile)) {
 $stmt = $db->prepare("
     SELECT id, name, mobile, email, password, 
            station_name, address, city, status 
-    FROM dealers
+    FROM hascol_dealers
     WHERE mobile = ? 
     LIMIT 1
 ");
@@ -57,7 +57,7 @@ if ($dealer['status'] !== 'active') {
 }
     
 // ─── Last login update karein ───
-$stmt = $db->prepare("UPDATE dealers SET last_login = NOW() WHERE id = ?");
+$stmt = $db->prepare("UPDATE hascol_dealers SET last_login = NOW() WHERE id = ?");
 $stmt->bind_param("i", $dealer['id']);
 $stmt->execute();
 $stmt->close();

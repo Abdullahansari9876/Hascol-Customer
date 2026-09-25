@@ -33,7 +33,7 @@ $stmt = $db->prepare("
            verified, status,
            total_coupons, remaining_coupons, used_coupons,
            created_at, verified_at, last_login
-    FROM customers 
+    FROM hascol_customer 
     WHERE id = ? LIMIT 1
 ");
 $stmt->bind_param("i", $customerId);

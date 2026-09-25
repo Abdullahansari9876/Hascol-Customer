@@ -67,7 +67,7 @@ $sql = "
         c.mobile AS customer_mobile,
         c.email AS customer_email
     FROM coupons cp
-    LEFT JOIN customers c ON c.id = cp.customer_id
+    LEFT JOIN hascol_customer c ON c.id = cp.customer_id
 ";
 
 if (!empty($where)) {

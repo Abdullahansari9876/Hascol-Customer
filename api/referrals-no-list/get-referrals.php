@@ -63,7 +63,7 @@ $sql = "
         c.mobile AS used_by_mobile,
         c.email AS used_by_email
     FROM referral_numbers r
-    LEFT JOIN customers c ON c.id = r.used_by_customer_id
+    LEFT JOIN hascol_customer c ON c.id = r.used_by_customer_id
 ";
 
 if (!empty($where)) {

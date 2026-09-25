@@ -14,19 +14,19 @@ ini_set('display_errors', 1);
 require '../config.php';
 require '../db.php';
 
-// Only dealers who have transactions
+// Only hascol_dealers who have transactions
 $sql = "
     SELECT DISTINCT d.id, d.name, d.mobile, d.station_name
-    FROM dealers d
+    FROM hascol_dealers d
     INNER JOIN transactions t ON t.dealer_id = d.id
     WHERE t.dealer_id IS NOT NULL
     ORDER BY d.name ASC
 ";
 $result = $db->query($sql);
 
-$dealers = [];
+$hascol_dealers = [];
 while ($row = $result->fetch_assoc()) {
-    $dealers[] = [
+    $hascol_dealers[] = [
         'id'           => (int)$row['id'],
         'name'         => $row['name'],
         'mobile'       => $row['mobile'] ?? '',
@@ -37,6 +37,6 @@ while ($row = $result->fetch_assoc()) {
 jsonResponse([
     'status'  => 'success',
     'message' => 'Dealers fetched successfully',
-    'total'   => count($dealers),
-    'dealers' => $dealers,
+    'total'   => count($hascol_dealers),
+    'hascol_dealers' => $hascol_dealers,
 ]);

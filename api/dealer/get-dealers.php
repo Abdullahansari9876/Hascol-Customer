@@ -35,7 +35,7 @@ if ($city !== '') {
 }
 
 $sql = "SELECT id, name, mobile, email, station_name, address, city, status, last_login, created_at, updated_at 
-        FROM dealers";
+        FROM hascol_dealers";
 if (!empty($where)) {
     $sql .= " WHERE " . implode(" AND ", $where);
 }
@@ -48,9 +48,9 @@ if (!empty($params)) {
 $stmt->execute();
 $result = $stmt->get_result();
 
-$dealers = [];
+$hascol_dealers = [];
 while ($row = $result->fetch_assoc()) {
-    $dealers[] = [
+    $hascol_dealers[] = [
         'id'           => (int)$row['id'],
         'name'         => $row['name'],
         'mobile'       => $row['mobile'],
@@ -69,6 +69,6 @@ $stmt->close();
 jsonResponse([
     'status'  => 'success',
     'message' => 'Dealers fetched successfully',
-    'total'   => count($dealers),
-    'dealers' => $dealers,
+    'total'   => count($hascol_dealers),
+    'hascol_dealers' => $hascol_dealers,
 ]);

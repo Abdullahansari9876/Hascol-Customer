@@ -15,7 +15,7 @@ if (empty($password)) jsonResponse(['status'=>'error','message'=>'password requi
 
 $ip = getClientIp();
 
-$stmt = $db->prepare("SELECT * FROM customers WHERE mobile = ? LIMIT 1");
+$stmt = $db->prepare("SELECT * FROM hascol_customer WHERE mobile = ? LIMIT 1");
 $stmt->bind_param("s", $mobile);
 $stmt->execute();
 $customer = $stmt->get_result()->fetch_assoc();
@@ -39,7 +39,7 @@ if ($customer['status'] !== 'active') {
 
 // ─── Naya device detect + IMEI update ───
 if (!empty($imei) && $imei !== $customer['imei']) {
-    $stmt = $db->prepare("UPDATE customers SET imei = ? WHERE id = ?");
+    $stmt = $db->prepare("UPDATE hascol_customer SET imei = ? WHERE id = ?");
     $stmt->bind_param("si", $imei, $customer['id']);
     $stmt->execute();
     $stmt->close();
@@ -70,7 +70,7 @@ if (!$stmt->execute()) {
 }
 $stmt->close();
 
-$stmt = $db->prepare("UPDATE customers SET last_login = NOW() WHERE id = ?");
+$stmt = $db->prepare("UPDATE hascol_customer SET last_login = NOW() WHERE id = ?");
 $stmt->bind_param("i", $customer['id']);
 $stmt->execute();
 $stmt->close();

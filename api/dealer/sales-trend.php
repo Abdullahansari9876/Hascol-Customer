@@ -31,7 +31,7 @@ if ($year < 2020 || $year > 2100) {
 }
 
 // ─── Dealer check ───
-$stmt = $db->prepare("SELECT id FROM dealers WHERE id = ? AND status = 'active' LIMIT 1");
+$stmt = $db->prepare("SELECT id FROM hascol_dealers WHERE id = ? AND status = 'active' LIMIT 1");
 $stmt->bind_param("i", $dealerId);
 $stmt->execute();
 $dealer = $stmt->get_result()->fetch_assoc();

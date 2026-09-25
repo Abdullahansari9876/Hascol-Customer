@@ -22,7 +22,7 @@ if (!preg_match('/^(03[0-9]{9}|\+923[0-9]{9})$/', $mobile)) {
     jsonResponse(['status'=>'error','message'=>'Invalid mobile number (e.g., 03001234567)']);
 }
 
-$stmt = $db->prepare("SELECT id, player_id, name, mobile FROM customers WHERE mobile = ? LIMIT 1");
+$stmt = $db->prepare("SELECT id, player_id, name, mobile FROM hascol_customer WHERE mobile = ? LIMIT 1");
 $stmt->bind_param("s", $mobile);
 $stmt->execute();
 $customer = $stmt->get_result()->fetch_assoc();
