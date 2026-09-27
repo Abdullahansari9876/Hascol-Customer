@@ -1,0 +1,6 @@
+# Database configuration files
+api/db.php
+hascolbridge_api/db.php
+
+# Future safety ke liye - koi bhi file jo db.php par khatam hoti hai
+*db.php
