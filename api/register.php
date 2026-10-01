@@ -105,8 +105,8 @@ if ($existing && $existing['verified'] == 1) {
 
 function generateCouponNo()
 {
-    $random = strtoupper(substr(md5(uniqid(microtime(), true)), 0, 8));
-    return 'CUST-' . $random;
+    // ✅ Secure 10-digit random number (no letters, no prefix)
+    return (string) random_int(1000000000, 9999999999);
 }
 
 $customerType = 'new_customer';
@@ -330,7 +330,7 @@ if ($couponCount == 0) {
     ];
 
     $validFrom = date('Y-m-d H:i:s');
-    $validTo = date('Y-m-d H:i:s', time() + 30 * 24 * 3600);
+    $validTo = date('Y-m-d H:i:s', strtotime('+1 year'));
 
     foreach ($defaultCoupons as $c) {
         // ✅ INSERT query mein image_url column add kiya
@@ -361,7 +361,6 @@ if ($couponCount == 0) {
             $c['amount'],
             $c['min'],
             $validFrom,
-            // hello
             $validTo
         );
         if (!$stmt->execute()) {

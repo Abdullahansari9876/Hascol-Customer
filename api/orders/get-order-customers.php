@@ -1,13 +1,11 @@
 <?php
 
-// ✅ Sirf OPTIONS handle karein
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit(0);
 }
 
 header("Content-Type: application/json; charset=utf-8");
-
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
@@ -22,9 +20,9 @@ $sql = "
 ";
 $result = $db->query($sql);
 
-$hascol_customer = [];
+$customers = [];    // ✅ Variable ka naam bhi saaf
 while ($row = $result->fetch_assoc()) {
-    $hascol_customer[] = [
+    $customers[] = [
         'id'     => (int)$row['id'],
         'name'   => $row['name'],
         'mobile' => $row['mobile'] ?? '',
@@ -35,6 +33,6 @@ while ($row = $result->fetch_assoc()) {
 jsonResponse([
     'status'    => 'success',
     'message'   => 'Customers fetched successfully',
-    'total'     => count($hascol_customer),
-    'hascol_customer' => $hascol_customer,
+    'total'     => count($customers),
+    'customers' => $customers,    // ✅ 'hascol_customer' → 'customers'
 ]);

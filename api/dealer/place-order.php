@@ -4,23 +4,6 @@
  * + Coupon validation to prevent double-use
  * 
  * POST /api/dealer/place-order.php
- * 
- * Body:
- * {
- *   dealer_id,
- *   customer_id,
- *   items: [ { product_id, product_sku, product_name, product_brand, quantity, price, discount_percent, subtotal } ],
- *   delivery_type: "pickup" | "delivery",
- *   delivery_address (optional),
- *   notes (optional),
- *   coupon_id (optional),
- *   coupon_code (optional),
- *   subtotal,
- *   coupon_discount,
- *   manual_discount,
- *   total_discount,
- *   total_amount
- * }
  */
 
 error_reporting(E_ALL);
@@ -81,6 +64,9 @@ if (!$dealer) {
     jsonResponse(['status' => 'error', 'message' => 'Dealer not found or inactive']);
 }
 
+// ✅ Dealer se station_name nikal liya
+$stationName = $dealer['station_name'];
+
 // ─── Customer Check ───
 $stmt = $db->prepare("
     SELECT id, player_key, player_id, name, mobile, 
@@ -111,7 +97,6 @@ foreach ($items as $item) {
         jsonResponse(['status' => 'error', 'message' => 'Invalid product_id or quantity']);
     }
 
-    // Verify product exists & stock available
     $stmt = $db->prepare("SELECT id, stock, status, name FROM lube_products WHERE id = ? LIMIT 1");
     $stmt->bind_param("i", $productId);
     $stmt->execute();
@@ -141,11 +126,10 @@ foreach ($items as $item) {
 }
 
 // ═══════════════════════════════════════════════════
-// ✅ COUPON AUTO-CALCULATE (agar frontend ne 0 bheja)
+// ✅ COUPON AUTO-CALCULATE
 // ═══════════════════════════════════════════════════
 if ($couponId > 0) {
 
-    // 1. Fetch coupon from database (must belong to this customer)
     $stmt = $db->prepare("
         SELECT id, title, discount_percent, discount_amount, valid_to, status
         FROM coupons 
@@ -157,12 +141,10 @@ if ($couponId > 0) {
     $couponRow = $stmt->get_result()->fetch_assoc();
     $stmt->close();
 
-    // 2. Does the coupon exist?
     if (!$couponRow) {
         jsonResponse(['status' => 'error', 'message' => 'Invalid coupon for this customer']);
     }
 
-    // 3. 🔥 MOST IMPORTANT — Is the coupon already used?
     if ($couponRow['status'] === 'used') {
         jsonResponse([
             'status' => 'error',
@@ -170,7 +152,6 @@ if ($couponId > 0) {
         ]);
     }
 
-    // 4. Is the coupon available?
     if ($couponRow['status'] !== 'available') {
         jsonResponse([
             'status' => 'error',
@@ -178,17 +159,14 @@ if ($couponId > 0) {
         ]);
     }
 
-    // 5. Has the coupon expired?
     if (!empty($couponRow['valid_to']) && strtotime($couponRow['valid_to']) < time()) {
         jsonResponse(['status' => 'error', 'message' => 'This coupon has expired.']);
     }
 
-    // 6. Auto-fill coupon_code if empty
     if (empty($couponCode)) {
         $couponCode = $couponRow['title'];
     }
 
-    // 7. Safety check — couponId > 0 but discount is 0? Something is wrong
     if ($couponDiscount <= 0) {
         jsonResponse([
             'status' => 'error',
@@ -198,10 +176,9 @@ if ($couponId > 0) {
 }
 
 // ═══════════════════════════════════════════════════
-// ✅ FINAL SANITY — total_amount must match
+// ✅ FINAL SANITY
 // ═══════════════════════════════════════════════════
 if ($totalAmount <= 0 && $subtotal > 0) {
-    // Safety: agar frontend ne total_amount 0 bheja
     $totalDiscount = round($couponDiscount + $manualDiscount, 2);
     if ($totalDiscount > $subtotal)
         $totalDiscount = $subtotal;
@@ -213,19 +190,21 @@ $orderNumber = 'ORD' . date('Ymd') . strtoupper(substr(md5(uniqid()), 0, 6));
 $db->begin_transaction();
 
 try {
-    // 1. Order insert
+    // ═══════════════════════════════════════════════════
+    // 1. Order insert  ✅ station_name ADD KIYA
+    // ═══════════════════════════════════════════════════
     $stmt = $db->prepare("
         INSERT INTO orders 
         (order_number, customer_id, dealer_id, player_key, player_id, 
          subtotal, discount, total_amount, 
          coupon_id, coupon_code, 
          status, payment_status, 
-         delivery_type, delivery_address, notes, 
+         delivery_type, delivery_address, station_name, notes, 
          created_at, updated_at) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'successful', 'paid', ?, ?, ?, NOW(), NOW())
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'successful', 'paid', ?, ?, ?, ?, NOW(), NOW())
     ");
     $stmt->bind_param(
-        "siissdddissss",
+        "siissdddisssss",
         $orderNumber,
         $customerId,
         $dealerId,
@@ -238,6 +217,7 @@ try {
         $couponCode,
         $deliveryType,
         $deliveryAddress,
+        $stationName,
         $notes
     );
     $stmt->execute();
@@ -279,22 +259,19 @@ try {
         $stmt->close();
     }
 
-    // 4. Coupon mark used (if any) — WITH RACE CONDITION PROTECTION
+    // 4. Coupon mark used (if any)
     if ($couponId > 0) {
 
-        // Step A: Lock the row (so no other request can use it at the same time)
         $stmt = $db->prepare("SELECT status FROM coupons WHERE id = ? FOR UPDATE");
         $stmt->bind_param("i", $couponId);
         $stmt->execute();
         $lockedCoupon = $stmt->get_result()->fetch_assoc();
         $stmt->close();
 
-        // Step B: After lock, check again — is it still available?
         if (!$lockedCoupon || $lockedCoupon['status'] !== 'available') {
             throw new Exception('This coupon has already been used. It cannot be used again.');
         }
 
-        // Step C: Now safely update — with "AND status = 'available'" condition
         $stmt = $db->prepare("
             UPDATE coupons 
             SET status = 'used', 
@@ -302,23 +279,21 @@ try {
                 used_at_station = ? 
             WHERE id = ? AND status = 'available'
         ");
-        $stmt->bind_param("si", $dealer['station_name'], $couponId);
+        $stmt->bind_param("si", $stationName, $couponId);
         $stmt->execute();
 
-        // Step D: If 0 rows affected, someone else used it first
         if ($stmt->affected_rows === 0) {
             $stmt->close();
             throw new Exception('This coupon has already been used (race condition detected).');
         }
         $stmt->close();
 
-        // Step E: Update customer counters
         $stmt = $db->prepare("
-    UPDATE hascol_customer 
-    SET remaining_coupons = remaining_coupons - 1, 
-        used_coupons = used_coupons + 1 
-    WHERE id = ? AND remaining_coupons > 0
-");
+            UPDATE hascol_customer 
+            SET remaining_coupons = remaining_coupons - 1, 
+                used_coupons = used_coupons + 1 
+            WHERE id = ? AND remaining_coupons > 0
+        ");
         $stmt->bind_param("i", $customerId);
         $stmt->execute();
 
@@ -331,23 +306,19 @@ try {
 
     // 5. Transaction insert
     $transactionRef = 'TXN' . strtoupper(substr(md5(uniqid()), 0, 10));
-    $stationName = $dealer['station_name'];
-
-    // Customer ka naam (place-order me $customer['name'] available hai)
     $customerName = $customer['name'] ?? 'N/A';
 
-    // Product names string (Step 1 me banaya tha)
     $productNamesString = implode(', ', array_map(function ($vi) {
         return $vi['product_name'] . ' (x' . $vi['quantity'] . ')';
     }, $validatedItems));
 
     $stmt = $db->prepare("
-    INSERT INTO transactions 
-    (customer_id, customer_name, dealer_id, player_key, player_id, station_name, product_name,
-     amount, discount, final_amount, 
-     coupon_id, coupon_code, status, transaction_ref, created_at) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'successful', ?, NOW())
-");
+        INSERT INTO transactions 
+        (customer_id, customer_name, dealer_id, player_key, player_id, station_name, product_name,
+         amount, discount, final_amount, 
+         coupon_id, coupon_code, status, transaction_ref, created_at) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'successful', ?, NOW())
+    ");
     $stmt->bind_param(
         "isissssdddiss",
         $customerId,

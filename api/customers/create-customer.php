@@ -19,7 +19,6 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-$player_key    = trim($_POST['player_key'] ?? '');
 $player_id     = trim($_POST['player_id'] ?? '');
 $name          = trim($_POST['name'] ?? '');
 $email         = trim($_POST['email'] ?? '');
@@ -33,9 +32,21 @@ $customer_type = trim($_POST['customer_type'] ?? 'new_customer');
 $status        = trim($_POST['status'] ?? 'active');
 $verified      = isset($_POST['verified']) ? (int)$_POST['verified'] : 0;
 
-// Validation
+// ═══════════════════════════════════════════
+// ✅ PLAYER KEY AUTO-GENERATE
+// ═══════════════════════════════════════════
+// Agar frontend se player_key nahi aayi to khud banao
+$player_key = trim($_POST['player_key'] ?? '');
+if (empty($player_key)) {
+    // player_id + timestamp + random se unique key banao
+    $player_key = 'PK_' . $player_id . '_' . time() . '_' . rand(1000, 9999);
+}
+
+// ═══════════════════════════════════════════
+// VALIDATION
+// ═══════════════════════════════════════════
 $errors = [];
-if (empty($player_key)) $errors['player_key'] = 'Player key is required';
+
 if (empty($player_id)) $errors['player_id'] = 'Player ID is required';
 if (empty($name)) $errors['name'] = 'Name is required';
 elseif (strlen($name) > 150) $errors['name'] = 'Name must not exceed 150 characters';
@@ -53,17 +64,35 @@ if (!empty($errors)) {
     exit;
 }
 
-// Duplicate checks
-$stmt = $db->prepare("SELECT id FROM hascol_customer WHERE player_key = ? LIMIT 1");
-$stmt->bind_param("s", $player_key);
+// ═══════════════════════════════════════════
+// DUPLICATE CHECKS
+// ═══════════════════════════════════════════
+
+// Player ID duplicate check
+$stmt = $db->prepare("SELECT id FROM hascol_customer WHERE player_id = ? LIMIT 1");
+$stmt->bind_param("s", $player_id);
 $stmt->execute();
 if ($stmt->get_result()->fetch_assoc()) {
     $stmt->close();
-    jsonResponse(['status' => 'error', 'message' => 'Player key already exists']);
+    jsonResponse(['status' => 'error', 'message' => 'Player ID already exists']);
     exit;
 }
 $stmt->close();
 
+// Player Key duplicate check (agar user ne bheji)
+if (!empty($_POST['player_key'])) {
+    $stmt = $db->prepare("SELECT id FROM hascol_customer WHERE player_key = ? LIMIT 1");
+    $stmt->bind_param("s", $player_key);
+    $stmt->execute();
+    if ($stmt->get_result()->fetch_assoc()) {
+        $stmt->close();
+        jsonResponse(['status' => 'error', 'message' => 'Player key already exists']);
+        exit;
+    }
+    $stmt->close();
+}
+
+// Mobile duplicate
 if (!empty($mobile)) {
     $stmt = $db->prepare("SELECT id FROM hascol_customer WHERE mobile = ? LIMIT 1");
     $stmt->bind_param("s", $mobile);
@@ -76,6 +105,7 @@ if (!empty($mobile)) {
     $stmt->close();
 }
 
+// Email duplicate
 if (!empty($email)) {
     $stmt = $db->prepare("SELECT id FROM hascol_customer WHERE email = ? LIMIT 1");
     $stmt->bind_param("s", $email);
@@ -91,13 +121,18 @@ if (!empty($email)) {
 $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
 $verifiedAt = $verified ? date('Y-m-d H:i:s') : null;
 
+// ═══════════════════════════════════════════
+// INSERT
+// ═══════════════════════════════════════════
 $stmt = $db->prepare("
     INSERT INTO hascol_customer 
     (player_key, player_id, name, email, mobile, password, imei, cnic, address, coupon_no, 
      customer_type, verified, status, ip_address, created_at, updated_at, verified_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?)
 ");
+
 $ip = $_SERVER['REMOTE_ADDR'] ?? null;
+
 $stmt->bind_param("sssssssssssisss",
     $player_key, $player_id, $name, $email, $mobile, $hashedPassword,
     $imei, $cnic, $address, $coupon_no, $customer_type, $verified, $status, $ip, $verifiedAt
@@ -109,7 +144,12 @@ if ($stmt->execute()) {
     jsonResponse([
         'status'  => 'success',
         'message' => 'Customer created successfully',
-        'data'    => ['id' => (int)$newId, 'name' => $name]
+        'data'    => [
+            'id'         => (int)$newId,
+            'name'       => $name,
+            'player_id'  => $player_id,
+            'player_key' => $player_key,
+        ]
     ]);
 } else {
     jsonResponse(['status' => 'error', 'message' => 'Database error: ' . $db->error]);

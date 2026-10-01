@@ -1,6 +1,6 @@
 <?php
 
-// ✅ Sirf OPTIONS handle karein
+// ✅ Sirf OPTIONS handle karein (CORS ke liye)
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit(0);
@@ -14,61 +14,83 @@ ini_set('display_errors', 1);
 require '../config.php';
 require '../db.php';
 
-// Filters
-$input  = getInput();
-$status = trim($input['status'] ?? '');
-$city   = trim($input['city'] ?? '');
-
-$where = [];
-$params = [];
-$types = '';
-
-if ($status !== '' && in_array($status, ['active', 'inactive'])) {
-    $where[] = "status = ?";
-    $params[] = $status;
-    $types .= 's';
-}
-if ($city !== '') {
-    $where[] = "city = ?";
-    $params[] = $city;
-    $types .= 's';
+// ─── Sirf GET method allow karo ───
+if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+    http_response_code(405);
+    jsonResponse([
+        'status'  => 'error',
+        'message' => 'Method not allowed. Use GET.'
+    ]);
 }
 
-$sql = "SELECT id, name, mobile, email, station_name, address, city, status, last_login, created_at, updated_at 
-        FROM hascol_dealers";
-if (!empty($where)) {
-    $sql .= " WHERE " . implode(" AND ", $where);
-}
-$sql .= " ORDER BY id DESC";
+// ─── Input lo (GET + JSON dono support) ───
+$input = array_merge($_GET, getInput() ?? []);
 
-$stmt = $db->prepare($sql);
-if (!empty($params)) {
-    $stmt->bind_param($types, ...$params);
+// ✅ id ya dealer_id dono accept karo
+$dealerId = (int)($input['id'] ?? $input['dealer_id'] ?? 0);
+
+// ─── Validation: id zaroori hai ───
+if ($dealerId <= 0) {
+    http_response_code(400);
+    jsonResponse([
+        'status'  => 'error',
+        'message' => 'Valid dealer id is required'
+    ]);
 }
+
+// ═══════════════════════════════════════════════
+// Single dealer fetch karo (id ke behalf pe)
+// ═══════════════════════════════════════════════
+$stmt = $db->prepare("
+    SELECT id, name, mobile, email, station_name, address,
+           city, latitude, longitude, status, profile_img,
+           last_login, created_at, updated_at
+    FROM hascol_dealers
+    WHERE id = ?
+    LIMIT 1
+");
+$stmt->bind_param("i", $dealerId);
 $stmt->execute();
-$result = $stmt->get_result();
-
-$hascol_dealers = [];
-while ($row = $result->fetch_assoc()) {
-    $hascol_dealers[] = [
-        'id'           => (int)$row['id'],
-        'name'         => $row['name'],
-        'mobile'       => $row['mobile'],
-        'email'        => $row['email'] ?? '',
-        'station_name' => $row['station_name'],
-        'address'      => $row['address'] ?? '',
-        'city'         => $row['city'] ?? '',
-        'status'       => $row['status'],
-        'last_login'   => $row['last_login'] ?? null,
-        'created_at'   => $row['created_at'],
-        'updated_at'   => $row['updated_at'],
-    ];
-}
+$dealer = $stmt->get_result()->fetch_assoc();
 $stmt->close();
 
+// ─── Dealer nahi mila ───
+if (!$dealer) {
+    http_response_code(404);
+    jsonResponse([
+        'status'  => 'error',
+        'message' => 'Dealer not found'
+    ]);
+}
+
+// ─── Profile image ka full URL banao ───
+$profileImg = '';
+if (!empty($dealer['profile_img'])) {
+    $baseUrl = defined('BASE_URL')
+        ? BASE_URL
+        : 'https://hascol.allowance.flamboyant-spence.92-205-119-218.plesk.page/';
+    $profileImg = rtrim($baseUrl, '/') . '/' . ltrim($dealer['profile_img'], '/');
+}
+
+// ─── Success Response ───
+http_response_code(200);
 jsonResponse([
     'status'  => 'success',
-    'message' => 'Dealers fetched successfully',
-    'total'   => count($hascol_dealers),
-    'hascol_dealers' => $hascol_dealers,
+    'message' => 'Dealer details fetched successfully',
+    'dealer'  => [
+        'id'           => (int)$dealer['id'],
+        'name'         => $dealer['name'],
+        'mobile'       => $dealer['mobile'],
+        'email'        => $dealer['email'] ?? '',
+        'station_name' => $dealer['station_name'],
+        'address'      => $dealer['address'] ?? '',
+        'city'         => $dealer['city'] ?? '',
+        'latitude'     => $dealer['latitude'],
+        'longitude'    => $dealer['longitude'],
+        'status'       => $dealer['status'],
+        'profile_img'  => $profileImg,
+        'last_login'   => $dealer['last_login'] ?? null,
+        'created_at'   => $dealer['created_at'],
+        'updated_at'   => $dealer['updated_at'],
+    ],
 ]);
