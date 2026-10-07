@@ -79,8 +79,8 @@ if (!empty($email)) {
     $stmt->close();
 }
 
-// Hash password
-$hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+// ✅ Password PLAIN TEXT mein save hoga (hashing nahi)
+// ⚠️ WARNING: Ye insecure hai, sirf testing/internal use ke liye theek hai
 
 // Insert
 $stmt = $db->prepare("
@@ -88,7 +88,7 @@ $stmt = $db->prepare("
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
 ");
 $stmt->bind_param("ssssssss",
-    $name, $mobile, $email, $hashedPassword, $station_name, $address, $city, $status
+    $name, $mobile, $email, $password, $station_name, $address, $city, $status
 );
 
 if ($stmt->execute()) {

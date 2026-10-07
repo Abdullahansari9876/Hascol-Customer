@@ -11,8 +11,8 @@
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
-require '../config.php';
-require '../db.php';
+require 'config.php';
+require 'db.php';
 
 $input      = getInput();
 $customerId = (int)($input['customer_id'] ?? 0);

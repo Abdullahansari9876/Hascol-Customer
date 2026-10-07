@@ -110,7 +110,7 @@ $distanceSql = "(6371 * ACOS(LEAST(1, GREATEST(-1,
       + SIN(RADIANS($latS)) * SIN(RADIANS(latitude))
     ))))";
 
-$columns = "id, name, mobile, email, station_name, address, city, latitude, longitude";
+$columns = "id, name, mobile, email, station_name, address, city, latitude, longitude, status";
 
 // ======================================================
 // 4) DISCOUNTS + their PRODUCTS (only active + valid date + usage left)
@@ -218,6 +218,7 @@ function formatDealer(array $r, array $discounts)
         'longitude'      => $dLng,
         'distance_km'    => round($km, 2),
         'eta_minutes'    => (int)ceil(($km / 30) * 60),   // approx 30 km/h average speed
+        'status'         => $r['status'],
         'has_discount'   => !empty($discounts),
         'discounts'      => $discounts,
         // Opens route/navigation in Google Maps
