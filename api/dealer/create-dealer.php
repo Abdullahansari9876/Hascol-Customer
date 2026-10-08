@@ -77,6 +77,7 @@ if (!empty($email)) {
         exit;
     }
     $stmt->close();
+    ///aa
 }
 
 // ✅ Password PLAIN TEXT mein save hoga (hashing nahi)
