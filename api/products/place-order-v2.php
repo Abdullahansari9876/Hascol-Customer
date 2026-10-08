@@ -2,6 +2,11 @@
 /**
  * PLACE ORDER API V4 (Frontend Calculates, Backend Just Saves)
  * 
+ * Changes:
+ *   - REMOVED: email
+ *   - ADDED:   name (optional), mobile (optional)
+ *   - Default: "Walking Customer" if name & mobile both empty
+ * 
  * POST /api/products/place-order-v2.php
  */
 
@@ -20,6 +25,8 @@ if (!is_array($input)) {
 
 // ─── Basic input ───
 $dealerId        = (int) ($input['dealer_id'] ?? 0);
+$name            = trim($input['name'] ?? '');
+$mobile          = trim($input['mobile'] ?? '');
 $items           = $input['items'] ?? [];
 $deliveryType    = trim($input['delivery_type'] ?? 'pickup');
 $deliveryAddress = trim($input['delivery_address'] ?? '');
@@ -32,6 +39,17 @@ $totalAmount     = (float) ($input['total_amount'] ?? 0);
 if ($dealerId <= 0) {
     jsonResponse(['status' => 'error', 'message' => 'dealer_id required']);
 }
+
+// mobile optional — agar diya to validate
+if ($mobile !== '' && !preg_match('/^[0-9+\-\s]{7,20}$/', $mobile)) {
+    jsonResponse(['status' => 'error', 'message' => 'Invalid mobile format']);
+}
+
+// name optional — agar diya to max length check
+if ($name !== '' && mb_strlen($name) > 150) {
+    jsonResponse(['status' => 'error', 'message' => 'name too long (max 150 chars)']);
+}
+
 if (empty($items) || !is_array($items)) {
     jsonResponse(['status' => 'error', 'message' => 'items required (array)']);
 }
@@ -54,6 +72,16 @@ if (!$dealer) {
 }
 
 $stationName = $dealer['station_name'];
+
+// ─── Customer info (name + mobile) ───
+// Agar dono blank hain → "Walking Customer"
+if ($name === '' && $mobile === '') {
+    $finalName   = 'Walking Customer';
+    $finalMobile = '';
+} else {
+    $finalName   = $name !== '' ? $name : 'Walking Customer';
+    $finalMobile = $mobile;
+}
 
 // ─── Validate items (structure only) ───
 $validatedItems = [];
@@ -115,11 +143,11 @@ if ($totalAmount <= 0 && $subtotal > 0) {
 
 $orderNumber = 'ORD' . date('Ymd') . strtoupper(substr(md5(uniqid()), 0, 6));
 
-// Customer not involved — set defaults
+// Customer is not registered — set defaults
 $customerId = 0;
 $key        = 'WALKIN_' . $dealerId;
 $playerId   = 'WALKIN';
-$customerName = 'Walking Customer';
+$customerName = $finalName;
 
 $db->begin_transaction();
 
@@ -142,10 +170,7 @@ try {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 'successful', 'paid', ?, ?, ?, ?, NOW(), NOW())
     ");
 
-    // Type string: 12 characters for 12 placeholders
-    // s=order_number, i=customer_id, i=dealer_id, s=player_key, s=player_id,
-    // d=subtotal, d=discount, d=total_amount,
-    // s=delivery_type, s=delivery_address, s=station_name, s=notes
+    // Type string: s i i s s d d d s s s s → "siissdddssss"
     $stmt->bind_param(
         "siissdddssss",
         $orderNumber,
@@ -253,23 +278,28 @@ try {
             'id'           => (int) $orderId,
             'order_number' => $orderNumber,
 
+            'customer' => [
+                'name'   => $finalName,
+                'mobile' => $finalMobile ?: null,
+            ],
+
             'dealer' => [
                 'id'           => (int) $dealer['id'],
                 'name'         => $dealer['name'],
                 'station_name' => $dealer['station_name'],
             ],
 
-            'subtotal'       => $subtotal,
-            'total_discount' => $totalDiscount,
-            'total_amount'   => $totalAmount,
+            // 'subtotal'         => $subtotal,
+            // 'total_discount'   => $totalDiscount,
+            'total_amount'     => $totalAmount,
 
-            'status'         => 'successful',
-            'payment_status' => 'paid',
-            'delivery_type'  => $deliveryType,
+            // 'status'           => 'successful',
+            'payment_status'   => 'paid',
+            'delivery_type'    => $deliveryType,
             'delivery_address' => $deliveryAddress,
-            'notes'          => $notes,
-            'items'          => $validatedItems,
-            'created_at'     => date('Y-m-d H:i:s'),
+            'notes'            => $notes,
+            'items'            => $validatedItems,
+            'created_at'       => date('Y-m-d H:i:s'),
         ],
     ]);
 

@@ -35,12 +35,12 @@ while ($row = $result->fetch_assoc()) {
     $advertisements[] = [
         'id'               => (int)$row['id'],
         'title'            => $row['title'],
-        'description'      => $row['description'] ?? '',
+        // 'description'      => $row['description'] ?? '',
         'image_url'        => $row['image_url'],
-        'discount_percent' => (float)$row['discount_percent'],
-        'coupon_prefix'    => $row['coupon_prefix'],
+        // 'discount_percent' => (float)$row['discount_percent'],
+        // 'coupon_prefix'    => $row['coupon_prefix'],
         'valid_to'         => $row['valid_to'],
-        'date_formatted'   => date('d M Y', strtotime($row['valid_to'])),
+        // 'date_formatted'   => date('d M Y', strtotime($row['valid_to'])),
     ];
 }
 $stmt->close();
