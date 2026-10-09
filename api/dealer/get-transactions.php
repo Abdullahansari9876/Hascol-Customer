@@ -28,8 +28,13 @@ if (!in_array($status, ['all', 'successful', 'pending', 'failed'])) {
     $status = 'all';
 }
 
-// Dealer check
-$stmt = $db->prepare("SELECT id, name, station_name FROM hascol_dealers WHERE id = ? AND status = 'active' LIMIT 1");
+// ✅ Dealer check — ab company_share aur dealer_share bhi fetch kar rahe hain
+$stmt = $db->prepare("
+    SELECT id, name, station_name, company_share, dealer_share 
+    FROM hascol_dealers 
+    WHERE id = ? AND status = 'active' 
+    LIMIT 1
+");
 $stmt->bind_param("i", $dealerId);
 $stmt->execute();
 $dealer = $stmt->get_result()->fetch_assoc();
@@ -99,19 +104,38 @@ while ($row = $result->fetch_assoc()) {
 }
 $stmt->close();
 
+// ✅ Dealer shares calculate karo (NULL safe)
+$companyShare = isset($dealer['company_share']) && $dealer['company_share'] !== null 
+    ? (float)$dealer['company_share'] 
+    : 0.0;
+
+$dealerShare = isset($dealer['dealer_share']) && $dealer['dealer_share'] !== null 
+    ? (float)$dealer['dealer_share'] 
+    : 0.0;
+
+// ✅ Company aur Dealer ka actual earning amount calculate karo (total_final par based)
+$companyEarning = round(($totalFinal * $companyShare) / 100, 2);
+$dealerEarning  = round(($totalFinal * $dealerShare) / 100, 2);
+
 jsonResponse([
     'status'  => 'success',
     'message' => 'Transactions fetched successfully',
     'dealer'  => [
-        'id'           => (int)$dealer['id'],
-        'name'         => $dealer['name'],
-        'station_name' => $dealer['station_name'],
+        'id'            => (int)$dealer['id'],
+        'name'          => $dealer['name'],
+        'station_name'  => $dealer['station_name'],
+        'company_share' => $companyShare,   // ✅ NEW
+        'dealer_share'  => $dealerShare,    // ✅ NEW
     ],
     'summary' => [
         'total_transactions' => count($transactions),
         'total_amount'       => round($totalAmount, 2),
         'total_discount'     => round($totalDiscount, 2),
         'total_final'        => round($totalFinal, 2),
+        'company_share'      => $companyShare,      // ✅ NEW
+        'dealer_share'       => $dealerShare,       // ✅ NEW
+        'company_earning'    => $companyEarning,    // ✅ NEW
+        'dealer_earning'     => $dealerEarning,     // ✅ NEW
     ],
     'transactions' => $transactions,
 ]);

@@ -49,7 +49,7 @@ while ($row = $result->fetch_assoc()) {
         'customer' => [
             'id'        => (int) $row['customer_id'],
             'name'      => $row['customer_name'] ?: 'Walking Customer',
-            'player_id' => $row['player_id'],
+            // 'player_id' => $row['player_id'],
         ],
         'product_name' => $row['product_name'],
         'price'        => (float) $row['final_amount'],

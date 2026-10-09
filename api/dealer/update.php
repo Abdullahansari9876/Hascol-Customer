@@ -59,9 +59,11 @@ $fields = [
     'status'       => trim($input['status'] ?? ''),
 ];
 
-$latitude  = $input['latitude'] ?? null;
-$longitude = $input['longitude'] ?? null;
-$password  = trim($input['password'] ?? '');  
+$latitude       = $input['latitude'] ?? null;
+$longitude      = $input['longitude'] ?? null;
+$company_share  = $input['company_share'] ?? null;   // ✅ NEW
+$dealer_share   = $input['dealer_share'] ?? null;    // ✅ NEW
+$password       = trim($input['password'] ?? '');  
 
 // ─── Validation (sirf tab jab value bheji gayi ho) ───
 // Mobile validation
@@ -82,13 +84,37 @@ if ($fields['status'] !== '' && !in_array($fields['status'], ['active', 'inactiv
     jsonResponse(['status' => 'error', 'message' => 'Status must be active or inactive']);
 }
 
-// ✅ NEW: Password validation
+// Password validation
 if ($password !== '' && strlen($password) < 6) {
     http_response_code(400);
     jsonResponse(['status' => 'error', 'message' => 'Password min 6 characters required']);
 }
 
-// ─── Duplicate mobile check (agar mobile bheja gaya ho) ───
+// ✅ NEW: company_share validation
+if ($company_share !== null && $company_share !== '') {
+    if (!is_numeric($company_share)) {
+        http_response_code(400);
+        jsonResponse(['status' => 'error', 'message' => 'company_share must be a number']);
+    }
+    if ((float)$company_share < 0) {
+        http_response_code(400);
+        jsonResponse(['status' => 'error', 'message' => 'company_share cannot be negative']);
+    }
+}
+
+// ✅ NEW: dealer_share validation
+if ($dealer_share !== null && $dealer_share !== '') {
+    if (!is_numeric($dealer_share)) {
+        http_response_code(400);
+        jsonResponse(['status' => 'error', 'message' => 'dealer_share must be a number']);
+    }
+    if ((float)$dealer_share < 0) {
+        http_response_code(400);
+        jsonResponse(['status' => 'error', 'message' => 'dealer_share cannot be negative']);
+    }
+}
+
+// ─── Duplicate mobile check ───
 if ($fields['mobile'] !== '') {
     $stmt = $db->prepare("SELECT id FROM hascol_dealers WHERE mobile = ? AND id != ? LIMIT 1");
     $stmt->bind_param("si", $fields['mobile'], $dealerId);
@@ -101,7 +127,7 @@ if ($fields['mobile'] !== '') {
     $stmt->close();
 }
 
-// ─── Duplicate email check (agar email bheja gaya ho) ───
+// ─── Duplicate email check ───
 if ($fields['email'] !== '') {
     $stmt = $db->prepare("SELECT id FROM hascol_dealers WHERE email = ? AND id != ? LIMIT 1");
     $stmt->bind_param("si", $fields['email'], $dealerId);
@@ -187,11 +213,13 @@ $hasField = !empty($fields['name'])
     || !empty($fields['address'])
     || !empty($fields['city'])
     || !empty($fields['status'])
-    || !empty($password)                                    // ✅ NEW
+    || !empty($password)
     || ($latitude !== null && $latitude !== '')
     || ($longitude !== null && $longitude !== '')
-    || $hasProfileImgUpdate                                 // ✅ UPDATED
-    || $allowEmpty;                                         // ✅ NEW
+    || ($company_share !== null && $company_share !== '')    // ✅ NEW
+    || ($dealer_share !== null && $dealer_share !== '')      // ✅ NEW
+    || $hasProfileImgUpdate
+    || $allowEmpty;
 
 if (!$hasField) {
     http_response_code(400);
@@ -204,7 +232,6 @@ $params  = [];
 $types   = '';
 
 foreach ($fields as $col => $val) {
-    // ✅ UPDATED: allow_empty=1 ho to empty bhi update karo
     if ($val !== '' || $allowEmpty) {
         $updates[] = "$col = ?";
         $params[]  = $val;
@@ -212,7 +239,7 @@ foreach ($fields as $col => $val) {
     }
 }
 
-// ✅ NEW: Password update
+// Password update
 if ($password !== '') {
     $hashed    = password_hash($password, PASSWORD_DEFAULT);
     $updates[] = "password = ?";
@@ -229,6 +256,20 @@ if ($latitude !== null && $latitude !== '') {
 if ($longitude !== null && $longitude !== '') {
     $updates[] = "longitude = ?";
     $params[]  = (float)$longitude;
+    $types    .= 'd';
+}
+
+// ✅ NEW: company_share update
+if ($company_share !== null && $company_share !== '') {
+    $updates[] = "company_share = ?";
+    $params[]  = (float)$company_share;
+    $types    .= 'd';
+}
+
+// ✅ NEW: dealer_share update
+if ($dealer_share !== null && $dealer_share !== '') {
+    $updates[] = "dealer_share = ?";
+    $params[]  = (float)$dealer_share;
     $types    .= 'd';
 }
 
