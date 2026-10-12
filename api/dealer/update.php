@@ -65,6 +65,11 @@ $company_share  = $input['company_share'] ?? null;   // ✅ NEW
 $dealer_share   = $input['dealer_share'] ?? null;    // ✅ NEW
 $password       = trim($input['password'] ?? '');  
 
+// ✅ NEW: agrement_expiry — sirf tab update hoga jab key request me bheji gayi ho.
+// Empty string bheji jaye to date NULL (clear) ho jaye gi.
+$hasAgrementExpiry = array_key_exists('agrement_expiry', $input);
+$agrement_expiry   = $hasAgrementExpiry ? trim((string)$input['agrement_expiry']) : '';
+
 // ─── Validation (sirf tab jab value bheji gayi ho) ───
 // Mobile validation
 if ($fields['mobile'] !== '' && !preg_match('/^[0-9+\-\s]{7,20}$/', $fields['mobile'])) {
@@ -111,6 +116,15 @@ if ($dealer_share !== null && $dealer_share !== '') {
     if ((float)$dealer_share < 0) {
         http_response_code(400);
         jsonResponse(['status' => 'error', 'message' => 'dealer_share cannot be negative']);
+    }
+}
+
+// ✅ NEW: agrement_expiry validation (optional, format YYYY-MM-DD)
+if ($hasAgrementExpiry && $agrement_expiry !== '') {
+    $dt = DateTime::createFromFormat('Y-m-d', $agrement_expiry);
+    if (!$dt || $dt->format('Y-m-d') !== $agrement_expiry) {
+        http_response_code(400);
+        jsonResponse(['status' => 'error', 'message' => 'agrement_expiry must be a valid date (YYYY-MM-DD)']);
     }
 }
 
@@ -218,6 +232,7 @@ $hasField = !empty($fields['name'])
     || ($longitude !== null && $longitude !== '')
     || ($company_share !== null && $company_share !== '')    // ✅ NEW
     || ($dealer_share !== null && $dealer_share !== '')      // ✅ NEW
+    || $hasAgrementExpiry                                    // ✅ NEW
     || $hasProfileImgUpdate
     || $allowEmpty;
 
@@ -271,6 +286,13 @@ if ($dealer_share !== null && $dealer_share !== '') {
     $updates[] = "dealer_share = ?";
     $params[]  = (float)$dealer_share;
     $types    .= 'd';
+}
+
+// ✅ NEW: agrement_expiry update (empty string => NULL)
+if ($hasAgrementExpiry) {
+    $updates[] = "agrement_expiry = ?";
+    $params[]  = ($agrement_expiry === '') ? null : $agrement_expiry;
+    $types    .= 's';
 }
 
 if ($hasProfileImgUpdate) {

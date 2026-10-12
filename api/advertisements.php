@@ -1,48 +1,39 @@
 <?php
 /**
- * ADVERTISEMENTS API
- * 
- * POST /api/customer/advertisements.php
- * Body: { customer_id (optional) }
- * 
- * Saari active advertisements return karta hai.
- * Filter: sirf status = 'active' (valid_from / valid_to filtering abhi nahi)
- * Response me valid_from aur valid_to show ho rahe hain.
+ * ADVERTISEMENTS LIST (ADMIN PANEL)
+ * POST /api/advertisements_list.php
+ * Saari advertisements return karta hai (active + inactive)
  */
 
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/db.php';
 
-require 'config.php';
-require 'db.php';
-
-$input      = getInput();
-$customerId = (int)($input['customer_id'] ?? 0);
-
-// ─── Advertisements lein (sirf active) ───
 $stmt = $db->prepare("
-    SELECT id, title, description, image_url, 
-           discount_percent, 
-           coupon_prefix, valid_from, valid_to, sort_order
-    FROM advertisements 
-    WHERE status = 'active' 
-    ORDER BY sort_order ASC, id ASC
+    SELECT id, title, description, image_url, valid_from, valid_to, status
+    FROM advertisements
+    ORDER BY id DESC
 ");
-$stmt->execute();
+
+if (!$stmt) {
+    jsonResponse(['status' => 'error', 'message' => $db->error], 500);
+}
+
+if (!$stmt->execute()) {
+    jsonResponse(['status' => 'error', 'message' => $stmt->error], 500);
+}
+
 $result = $stmt->get_result();
 
 $advertisements = [];
 while ($row = $result->fetch_assoc()) {
     $advertisements[] = [
-        'id'               => (int)$row['id'],
-        'title'            => $row['title'],
-        // 'description'      => $row['description'] ?? '',
-        'image_url'        => $row['image_url'],
-        // 'discount_percent' => (float)$row['discount_percent'],
-        // 'coupon_prefix'    => $row['coupon_prefix'],
-        // 'valid_from'       => $row['valid_from'],
-        // 'valid_to'         => $row['valid_to'],
-        'date_formatted'   => date('d M Y', strtotime($row['valid_to'])),
+        'id'          => (int)$row['id'],
+        'title'       => $row['title'],
+        'description' => $row['description'] ?? '',
+        'image_url'   => $row['image_url'],
+        'valid_from'  => $row['valid_from'],
+        'valid_to'    => $row['valid_to'],
+        'status'      => $row['status'],
     ];
 }
 $stmt->close();

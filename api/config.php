@@ -3,20 +3,17 @@
 // FIREBASE CONFIG
 // ============================================
 define('FIREBASE_DB_URL', 'https://loyality-sales-ce91e-default-rtdb.asia-southeast1.firebasedatabase.app/');
-// ⚠️ Asia region hai to: https://loyality-sales-default-rtdb.asia-southeast1.firebasedatabase.app
-
 define('FIREBASE_DB_SECRET', 'naNpXKi9WZODl9vVB9tEw9SG30D28yF0TIZe2CSQ');
-// Console → Project Settings → Service Accounts → Database Secrets
 
 // ============================================
 // OTP CONFIG
 // ============================================
 define('OTP_LENGTH', 6);
-define('OTP_EXPIRY', 600);        // ✅ 10 minutes
+define('OTP_EXPIRY', 600);        // 10 minutes
 define('OTP_MAX_ATTEMPTS', 5);
 
 // ============================================
-// HELPERS
+// HELPERS: Input / Output
 // ============================================
 function jsonResponse($data, $code = 200) {
     http_response_code($code);
@@ -32,6 +29,9 @@ function getInput() {
     return $_POST;
 }
 
+// ============================================
+// FIREBASE HELPERS
+// ============================================
 function fbGet($path) {
     $url = FIREBASE_DB_URL . '/' . trim($path, '/') . '.json?auth=' . FIREBASE_DB_SECRET;
     $ch = curl_init($url);

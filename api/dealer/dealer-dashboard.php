@@ -39,8 +39,13 @@ if (!empty($fromDate) && !empty($toDate) && $fromDate > $toDate) {
     jsonResponse(['status'=>'error','message'=>'from_date must be less than or equal to to_date']);
 }
 
-// ─── Dealer check ───
-$stmt = $db->prepare("SELECT id, name, station_name FROM hascol_dealers WHERE id = ? AND status = 'active' LIMIT 1");
+// ─── Dealer check (UPDATED: company_share, dealer_share, agrement_expiry added) ───
+$stmt = $db->prepare("
+    SELECT id, name, station_name, company_share, dealer_share, agrement_expiry 
+    FROM hascol_dealers 
+    WHERE id = ? AND status = 'active' 
+    LIMIT 1
+");
 $stmt->bind_param("i", $dealerId);
 $stmt->execute();
 $dealer = $stmt->get_result()->fetch_assoc();
@@ -136,7 +141,7 @@ $stmt->execute();
 $statusBreakdown = $stmt->get_result()->fetch_assoc();
 $stmt->close();
 
-// ─── Response ───
+// ─── Response (UPDATED: shares block added) ───
 jsonResponse([
     'status'  => 'success',
     'message' => 'Dashboard data fetched successfully',
@@ -144,6 +149,12 @@ jsonResponse([
         'id'           => (int)$dealer['id'],
         'name'         => $dealer['name'],
         'station_name' => $dealer['station_name'],
+        // ✅ NEW: Company share, Dealer share, Agreement expiry
+        'shares' => [
+            'company_share'   => $dealer['company_share'] !== null ? (float)$dealer['company_share'] : null,
+            'dealer_share'    => $dealer['dealer_share']  !== null ? (float)$dealer['dealer_share']  : null,
+            'agrement_expiry' => $dealer['agrement_expiry'] ?: null,
+        ],
     ],
     'filter'  => [
         'from_date' => $fromDate ?: null,

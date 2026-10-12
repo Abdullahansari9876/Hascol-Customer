@@ -39,6 +39,7 @@ $latitude       = $input['latitude']       ?? null;
 $longitude      = $input['longitude']      ?? null;
 $company_share  = $input['company_share']  ?? null;
 $dealer_share   = $input['dealer_share']   ?? null;
+$agrement_expiry = trim((string)($input['agrement_expiry'] ?? ''));   // ✅ NEW
 
 // ─── Validation ───
 $errors = [];
@@ -99,6 +100,14 @@ if ($dealer_share !== null && $dealer_share !== '') {
     }
 }
 
+// ✅ NEW: agrement_expiry validation (optional, format YYYY-MM-DD)
+if ($agrement_expiry !== '') {
+    $dt = DateTime::createFromFormat('Y-m-d', $agrement_expiry);
+    if (!$dt || $dt->format('Y-m-d') !== $agrement_expiry) {
+        $errors['agrement_expiry'] = 'Agreement expiry must be a valid date (YYYY-MM-DD)';
+    }
+}
+
 if (!empty($errors)) {
     jsonResponse(['status' => 'error', 'message' => 'Validation failed', 'errors' => $errors]);
     exit;
@@ -139,18 +148,19 @@ $latitudeDb      = ($latitude === null || $latitude === '')     ? null : (float)
 $longitudeDb     = ($longitude === null || $longitude === '')   ? null : (float)$longitude;
 $companyShareDb  = ($company_share === null || $company_share === '') ? null : (float)$company_share;
 $dealerShareDb   = ($dealer_share === null || $dealer_share === '')   ? null : (float)$dealer_share;
+$agrementExpiryDb = ($agrement_expiry === '') ? null : $agrement_expiry;   // ✅ NEW
 
 // ─── Insert Query ───
 $stmt = $db->prepare("
     INSERT INTO hascol_dealers 
         (name, mobile, email, password, station_name, address, city, 
-         latitude, longitude, company_share, dealer_share, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+         latitude, longitude, company_share, dealer_share, agrement_expiry, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
 ");
 
 // Types: name(s), mobile(s), email(s), password(s), station_name(s), address(s), city(s),
-//        latitude(d), longitude(d), company_share(d), dealer_share(d), status(s)
-$stmt->bind_param("sssssssdddds",
+//        latitude(d), longitude(d), company_share(d), dealer_share(d), agrement_expiry(s), status(s)
+$stmt->bind_param("sssssssddddss",
     $name,
     $mobile,
     $emailDb,
@@ -162,6 +172,7 @@ $stmt->bind_param("sssssssdddds",
     $longitudeDb,
     $companyShareDb,
     $dealerShareDb,
+    $agrementExpiryDb,
     $status
 );
 
@@ -172,17 +183,18 @@ if ($stmt->execute()) {
         'status'  => 'success',
         'message' => 'Dealer created successfully',
         'data'    => [
-            'id'            => (int)$newId,
-            'name'          => $name,
-            'mobile'        => $mobile,
-            'email'         => $emailDb,
-            'station_name'  => $station_name,
-            'city'          => $cityDb,
-            'latitude'      => $latitudeDb,
-            'longitude'     => $longitudeDb,
-            'company_share' => $companyShareDb,
-            'dealer_share'  => $dealerShareDb,
-            'status'        => $status
+            'id'              => (int)$newId,
+            'name'            => $name,
+            'mobile'          => $mobile,
+            'email'           => $emailDb,
+            'station_name'    => $station_name,
+            'city'            => $cityDb,
+            'latitude'        => $latitudeDb,
+            'longitude'       => $longitudeDb,
+            'company_share'   => $companyShareDb,
+            'dealer_share'    => $dealerShareDb,
+            'agrement_expiry' => $agrementExpiryDb,
+            'status'          => $status
         ]
     ]);
 } else {
