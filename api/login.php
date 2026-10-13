@@ -37,8 +37,21 @@ if ($customer['status'] !== 'active') {
     jsonResponse(['status'=>'error','message'=>'Account is ' . $customer['status']]);
 }
 
-// ─── Naya device detect + IMEI update ───
-if (!empty($imei) && $imei !== $customer['imei']) {
+// ─── IMEI DEVICE LOCK ───
+// Registered IMEI se alag device par login block. IMEI kabhi overwrite nahi hoti.
+$storedImei = trim((string)($customer['imei'] ?? ''));
+
+if ($storedImei !== '') {
+    // Account pehle se ek device se bandha hai
+    if ($imei === '' || !hash_equals($storedImei, $imei)) {
+        jsonResponse([
+            'status'     => 'error',
+            'error_code' => 'DEVICE_MISMATCH',
+            'message'    => 'This account is registered on another device. Login from a new device is not allowed. Please contact support.'
+        ]);
+    }
+} elseif ($imei !== '') {
+    // Purana customer jiski IMEI abhi khali hai: pehli dafa device bind karo
     $stmt = $db->prepare("UPDATE hascol_customer SET imei = ? WHERE id = ?");
     $stmt->bind_param("si", $imei, $customer['id']);
     $stmt->execute();

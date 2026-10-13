@@ -8,7 +8,7 @@
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 
-require_once __DIR__ . '/../db.php'; // path apne project ke mutabiq adjust karein
+require_once __DIR__ . '/../db.php'; 
 
 function countRespond(int $statusCode, array $payload): void
 {
