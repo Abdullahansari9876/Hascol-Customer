@@ -254,11 +254,10 @@ foreach ($fields as $col => $val) {
     }
 }
 
-// Password update
+// Password update (PLAIN TEXT — no hashing)
 if ($password !== '') {
-    $hashed    = password_hash($password, PASSWORD_DEFAULT);
     $updates[] = "password = ?";
-    $params[]  = $hashed;
+    $params[]  = $password;
     $types    .= 's';
 }
 

@@ -32,7 +32,7 @@ if (!preg_match('/^(03[0-9]{9}|\+923[0-9]{9})$/', $mobile)) {
 // ─── Dealer dhoondein mobile se ───
 $stmt = $db->prepare("
     SELECT id, name, mobile, email, password, 
-           station_name, address, city, status 
+           station_name, address, city, latitude, longitude, status 
     FROM hascol_dealers
     WHERE mobile = ? 
     LIMIT 1
@@ -74,6 +74,8 @@ jsonResponse([
         'station_name' => $dealer['station_name'],
         'address'      => $dealer['address'] ?? '',
         'city'         => $dealer['city'] ?? '',
+        'latitude'     => $dealer['latitude']  !== null ? (float)$dealer['latitude']  : null,
+        'longitude'    => $dealer['longitude'] !== null ? (float)$dealer['longitude'] : null,
         'status'       => $dealer['status'],
     ],
 ]);

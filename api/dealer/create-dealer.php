@@ -137,8 +137,8 @@ if (!empty($email)) {
     $stmt->close();
 }
 
-// ─── Hash password ───
-$hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+// ─── Password PLAIN TEXT (no hashing) ───
+$plainPassword = $password;
 
 // ─── Nullable values ko NULL set karo agar empty hain ───
 $emailDb         = ($email === '')         ? null : $email;
@@ -164,7 +164,7 @@ $stmt->bind_param("sssssssddddss",
     $name,
     $mobile,
     $emailDb,
-    $hashedPassword,
+    $plainPassword,
     $station_name,
     $addressDb,
     $cityDb,
