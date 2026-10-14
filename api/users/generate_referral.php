@@ -13,12 +13,8 @@ function refRespond(int $statusCode, array $payload): void
 
 function refGenerateNumber(): string
 {
-    // Sirf digits: pehla digit 1-9 (0 se start nahi hoga), baqi 7 digits 0-9
-    $code = (string)random_int(1, 9);
-    for ($i = 0; $i < 7; $i++) {
-        $code .= (string)random_int(0, 9);
-    }
-    return $code; // e.g. 48271936 (8 digits)
+    // ✅ Secure 10-digit random number (no letters, no prefix)
+    return (string) random_int(1000000000, 9999999999);
 }
 
 // 1) Request method validation
