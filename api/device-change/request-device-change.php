@@ -5,24 +5,33 @@ ini_set('display_errors', 1);
 require '../config.php';
 require '../db.php';
 
+// Mobile ko ek format (03XXXXXXXXX) mein badalta hai, taake +92 aur 03 dono match hon
+function normalizeMobile($m)
+{
+    $m = preg_replace('/[\s\-]/', '', (string)$m);
+    if (strpos($m, '+92') === 0) {
+        $m = '0' . substr($m, 3);
+    }
+    return $m;
+}
+
 $input      = getInput();
 $referralNo = trim($input['referral_no'] ?? $input['coupon_no'] ?? '');
+$oldMobile  = trim($input['old_mobile'] ?? '');  // register karte waqt wala PURANA mobile
 $newImei    = trim($input['new_imei'] ?? '');
-$contact    = trim($input['contact'] ?? '');    // customer ka NAYA mobile number
-$password   = trim($input['password'] ?? '');   // optional
-$reason     = trim($input['reason'] ?? '');     // optional
+$reason     = trim($input['reason'] ?? '');      // optional
 
 // ─── Validation ───
 if ($referralNo === '') jsonResponse(['status'=>'error','message'=>'Please enter your referral number']);
+if ($oldMobile === '')  jsonResponse(['status'=>'error','message'=>'Please enter your old registered mobile number']);
 if ($newImei === '')    jsonResponse(['status'=>'error','message'=>'new_imei required']);
-if ($contact === '')    jsonResponse(['status'=>'error','message'=>'Please enter your new mobile number']);
 if (strlen($newImei) > 20) jsonResponse(['status'=>'error','message'=>'Invalid device id']);
 
 if (!preg_match('/^[a-zA-Z0-9_\-]{4,50}$/', $referralNo)) {
     jsonResponse(['status'=>'error','error_code'=>'REFERRAL_MISMATCH','message'=>'Your referral number is incorrect. Request cannot be submitted.']);
 }
-if (!preg_match('/^(03[0-9]{9}|\+923[0-9]{9})$/', $contact)) {
-    jsonResponse(['status'=>'error','message'=>'Invalid mobile number (e.g., 03001234567)']);
+if (!preg_match('/^(03[0-9]{9}|\+923[0-9]{9})$/', $oldMobile)) {
+    jsonResponse(['status'=>'error','message'=>'Invalid mobile number.']);
 }
 if ($reason !== '' && strlen($reason) < 5) {
     jsonResponse(['status'=>'error','message'=>'Reason must be at least 5 characters']);
@@ -31,7 +40,7 @@ if (strlen($reason) > 255) jsonResponse(['status'=>'error','message'=>'Reason to
 if ($reason === '') $reason = 'Not provided';   // DB column NOT NULL hai
 
 // ─── Customer referral_no se dhoondein ───
-$stmt = $db->prepare("SELECT id, password, verified, status, imei FROM hascol_customer WHERE coupon_no = ? LIMIT 1");
+$stmt = $db->prepare("SELECT id, mobile, verified, status, imei FROM hascol_customer WHERE coupon_no = ? LIMIT 1");
 $stmt->bind_param("s", $referralNo);
 $stmt->execute();
 $customer = $stmt->get_result()->fetch_assoc();
@@ -40,7 +49,7 @@ $stmt->close();
 // Fallback: referral_numbers table se
 if (!$customer) {
     $stmt = $db->prepare("
-        SELECT c.id, c.password, c.verified, c.status, c.imei
+        SELECT c.id, c.mobile, c.verified, c.status, c.imei
         FROM referral_numbers r
         JOIN hascol_customer c ON c.id = r.used_by_customer_id
         WHERE r.referral_no = ?
@@ -63,9 +72,13 @@ if (!$customer) {
 if ($customer['verified'] != 1)       jsonResponse(['status'=>'error','message'=>'Account not verified.']);
 if ($customer['status'] !== 'active') jsonResponse(['status'=>'error','message'=>'Account is ' . $customer['status']]);
 
-// ─── Password (optional, lekin diya to sahi hona chahiye) ───
-if ($password !== '' && !password_verify($password, (string)$customer['password'])) {
-    jsonResponse(['status'=>'error','message'=>'Invalid password']);
+// ─── Old mobile match (register wala number) ───
+if (normalizeMobile($oldMobile) !== normalizeMobile($customer['mobile'] ?? '')) {
+    jsonResponse([
+        'status'     => 'error',
+        'error_code' => 'MOBILE_MISMATCH',
+        'message'    => 'Your mobile number does not match our records. Request cannot be submitted.',
+    ]);
 }
 
 // ─── IMEI checks ───
@@ -98,12 +111,12 @@ if ($cnt >= 3) {
     jsonResponse(['status'=>'error','message'=>'Too many requests. Please try again tomorrow.']);
 }
 
-// ─── Insert ───
+// ─── Insert (contact column me OLD MOBILE save ho raha hai) ───
 $stmt = $db->prepare("
     INSERT INTO hascol_device_change_requests (customer_id, old_imei, new_imei, reason, contact, status, created_at)
     VALUES (?, ?, ?, ?, ?, 'pending', NOW())
 ");
-$stmt->bind_param("issss", $customer['id'], $storedImei, $newImei, $reason, $contact);
+$stmt->bind_param("issss", $customer['id'], $storedImei, $newImei, $reason, $oldMobile);
 
 if (!$stmt->execute()) {
     jsonResponse(['status'=>'error','message'=>'Request failed. Please try again.']);
