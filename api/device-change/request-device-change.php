@@ -16,10 +16,14 @@ function normalizeMobile($m)
 }
 
 $input      = getInput();
-$referralNo = trim($input['referral_no'] ?? $input['coupon_no'] ?? '');
-$oldMobile  = trim($input['old_mobile'] ?? '');  // register karte waqt wala PURANA mobile
-$newImei    = trim($input['new_imei'] ?? '');
-$reason     = trim($input['reason'] ?? '');      // optional
+
+// ═══════════════════════════════════════════════════════════
+// IMPROVED INPUT HANDLING — multiple possible keys support
+// ═══════════════════════════════════════════════════════════
+$referralNo = trim($input['referral_no'] ?? $input['coupon_no'] ?? $input['referral'] ?? '');
+$oldMobile  = trim($input['old_mobile'] ?? $input['mobile'] ?? $input['oldMobile'] ?? $input['old_number'] ?? '');
+$newImei    = trim($input['new_imei'] ?? $input['imei'] ?? $input['newImei'] ?? $input['device_id'] ?? '');
+$reason     = trim($input['reason'] ?? '');
 
 // ─── Validation ───
 if ($referralNo === '') jsonResponse(['status'=>'error','message'=>'Please enter your referral number']);
@@ -37,7 +41,7 @@ if ($reason !== '' && strlen($reason) < 5) {
     jsonResponse(['status'=>'error','message'=>'Reason must be at least 5 characters']);
 }
 if (strlen($reason) > 255) jsonResponse(['status'=>'error','message'=>'Reason too long (max 255)']);
-if ($reason === '') $reason = 'Not provided';   // DB column NOT NULL hai
+if ($reason === '') $reason = 'Not provided';
 
 // ─── Customer referral_no se dhoondein ───
 $stmt = $db->prepare("SELECT id, mobile, verified, status, imei FROM hascol_customer WHERE coupon_no = ? LIMIT 1");
