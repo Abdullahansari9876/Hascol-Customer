@@ -2,7 +2,7 @@
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 
-require_once __DIR__ . '/../db.php'; 
+require_once __DIR__ . '/../db.php';
 
 function refRespond(int $statusCode, array $payload): void
 {
@@ -13,7 +13,7 @@ function refRespond(int $statusCode, array $payload): void
 
 function refGenerateNumber(): string
 {
-    // ✅ Secure 10-digit random number (no letters, no prefix)
+    // Secure 10-digit random number (no letters, no prefix)
     return (string) random_int(1000000000, 9999999999);
 }
 
@@ -26,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     ]);
 }
 
-// 2) Input read (JSON ya form-data dono)
+// 2) Input read (JSON or form-data both supported)
 $input       = [];
 $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
 
@@ -47,7 +47,7 @@ if (stripos($contentType, 'application/json') !== false) {
 // 3) Field validation
 $errors = [];
 
-// --- name (jis user ke liye referral ban raha hai) ---
+// --- name (user for whom referral is being created) ---
 $userName = '';
 if (!array_key_exists('name', $input)) {
     $errors['name'] = 'Name is required.';
@@ -66,7 +66,7 @@ if (!array_key_exists('name', $input)) {
     }
 }
 
-// --- customer_id (referral dene wala customer) ---
+// --- customer_id (customer who is giving the referral) ---
 $customerId = null;
 if (!array_key_exists('customer_id', $input) || $input['customer_id'] === '' || $input['customer_id'] === null) {
     $errors['customer_id'] = 'customer_id is required.';
@@ -108,7 +108,8 @@ try {
         ]);
     }
 
-    if ($customer['status'] !== 'active') {
+    // Case-insensitive status check (handles 'active', 'Active', 'ACTIVE')
+    if (strtolower((string)$customer['status']) !== 'active') {
         refRespond(403, [
             'success' => false,
             'message' => 'This customer account is not active.',
@@ -116,11 +117,14 @@ try {
         ]);
     }
 
-    // 5) Insert with duplicate-retry (is_used = 1 generate hote hi set hota hai)
+    // 5) Insert with duplicate-retry
+    //    is_used = 0  =>  referral is UNUSED (freshly generated, ready to share)
+    //    is_used = 1  =>  referral has been USED by someone
     $stmt = $db->prepare(
         "INSERT INTO referral_numbers (referral_no, user_name, referred_by_customer_id, is_used)
-         VALUES (?, ?, ?, 1)"
+         VALUES (?, ?, ?, 0)"
     );
+
     $referralNo = '';
     $stmt->bind_param('ssi', $referralNo, $userName, $customerId);
 
@@ -138,7 +142,7 @@ try {
             if ((int)$e->getCode() !== 1062) { // 1062 = duplicate entry
                 throw $e;
             }
-            // duplicate mila, naya number generate karke dobara try karein
+            // duplicate found, generate new number and retry
         }
     }
     $stmt->close();
@@ -150,7 +154,7 @@ try {
         ]);
     }
 
-    // Saved row wapas read karein
+    // 6) Read back the saved row
     $sel = $db->prepare(
         "SELECT id, referral_no, user_name, referred_by_customer_id, is_used, created_at
          FROM referral_numbers WHERE id = ? LIMIT 1"
@@ -168,9 +172,8 @@ try {
             'user_name'               => $row['user_name'],
             'referred_by_customer_id' => (int)$row['referred_by_customer_id'],
             'referral_no'             => $row['referral_no'],
-            'is_used'                 => (int)$row['is_used'], 
+            'is_used'                 => (int)$row['is_used'],
             'created_at'              => $row['created_at']
-            // hello word
         ]
     ]);
 } catch (Throwable $e) {
