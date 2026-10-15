@@ -1,14 +1,27 @@
 <?php
 /**
- * Customer Users Count API
+ * Customer Referral Stats API
  * Endpoint : GET /api/customer_users_count.php?customer_id=1
- * Purpose  : Kisi customer ne kitne users ko referral diya, uski total count return karta hai
- * Response : { "success": true, "data": { "customer_id": 1, "total_referred_users": 3 } }
+ *
+ * Purpose  : Kisi customer ne kitne referrals banaye, kitne use hue,
+ *            kitne unused hain, aur kitne alag customers ne use kiye.
+ *
+ * Response : {
+ *   "success": true,
+ *   "data": {
+ *     "customer_id": 1,
+ *     "total_referrals": 5,        // Total banaye
+ *     "used_referrals": 3,         // Use ho gaye
+ *     "unused_referrals": 2,       // Baaki hain
+ *     "total_referred_users": 3    // Kitne alag customers ne use kiye
+ *   }
+ * }
  */
+
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 
-require_once __DIR__ . '/../db.php'; 
+require_once __DIR__ . '/../db.php';
 
 function countRespond(int $statusCode, array $payload): void
 {
@@ -17,7 +30,7 @@ function countRespond(int $statusCode, array $payload): void
     exit;
 }
 
-// 1) Request method validation
+// 1) Method validation
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     header('Allow: GET');
     countRespond(405, [
@@ -26,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     ]);
 }
 
-// 2) customer_id validation (query string se)
+// 2) customer_id validation
 if (!isset($_GET['customer_id']) || $_GET['customer_id'] === '') {
     countRespond(422, [
         'success' => false,
@@ -68,21 +81,29 @@ try {
         ]);
     }
 
-    // 4) Count
-    $cntStmt = $db->prepare(
-        "SELECT COUNT(*) AS total FROM referral_numbers WHERE referred_by_customer_id = ?"
-    );
-    $cntStmt->bind_param('i', $customerId);
-    $cntStmt->execute();
-    $row = $cntStmt->get_result()->fetch_assoc();
-    $cntStmt->close();
+    // 4) All stats ek hi query mein
+    $statsStmt = $db->prepare("
+        SELECT 
+            COUNT(*) AS total_referrals,
+            SUM(CASE WHEN is_used = 1 THEN 1 ELSE 0 END) AS used_referrals,
+            SUM(CASE WHEN is_used = 0 THEN 1 ELSE 0 END) AS unused_referrals,
+            COUNT(DISTINCT CASE WHEN is_used = 1 THEN used_by_customer_id END) AS total_referred_users
+        FROM referral_numbers 
+        WHERE referred_by_customer_id = ?
+    ");
+    $statsStmt->bind_param('i', $customerId);
+    $statsStmt->execute();
+    $row = $statsStmt->get_result()->fetch_assoc();
+    $statsStmt->close();
 
     countRespond(200, [
         'success' => true,
-        'message' => 'Referred users count fetched successfully.',
+        'message' => 'Referral stats fetched successfully.',
         'data'    => [
             'customer_id'          => $customerId,
-            'total_referred_users' => (int)$row['total']
+            'total_referrals'      => (int)$row['total_referrals'],
+            'used_referrals'       => (int)$row['used_referrals'],
+            'unused_referrals'     => (int)$row['unused_referrals']
         ]
     ]);
 } catch (Throwable $e) {
