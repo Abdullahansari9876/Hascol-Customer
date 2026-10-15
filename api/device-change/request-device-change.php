@@ -95,6 +95,21 @@ if (hash_equals($storedImei, $newImei)) {
     jsonResponse(['status'=>'error','message'=>'This device is already registered. Please login directly.']);
 }
 
+// ─── NEW: Naya IMEI kisi aur customer ke account mein registered to nahi? ───
+$stmt = $db->prepare("SELECT id FROM hascol_customer WHERE imei = ? AND id <> ? LIMIT 1");
+$stmt->bind_param("si", $newImei, $customer['id']);
+$stmt->execute();
+$imeiOwner = $stmt->get_result()->fetch_assoc();
+$stmt->close();
+
+if ($imeiOwner) {
+    jsonResponse([
+        'status'     => 'error',
+        'error_code' => 'IMEI_ALREADY_REGISTERED',
+        'message'    => 'This device is already registered with another account. Request cannot be submitted.',
+    ]);
+}
+
 // ─── Pehle se pending request? ───
 $stmt = $db->prepare("SELECT id FROM hascol_device_change_requests WHERE customer_id = ? AND status = 'pending' LIMIT 1");
 $stmt->bind_param("i", $customer['id']);

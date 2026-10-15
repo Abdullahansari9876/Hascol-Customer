@@ -346,24 +346,24 @@ if ($couponCount == 0) {
     // ✅ Har coupon ke saath uska FULL IMAGE URL
     $defaultCoupons = [
         [
-            'title' => 'Welcome 10% Off',
-            'desc' => 'Get 10% discount on your first purchase',
+            'title' => 'Welcome 15% Off',
+            'desc' => 'Get 15% discount on your first purchase',
             'image_url' => 'https://hascol.allowance.flamboyant-spence.92-205-119-218.plesk.page/uploads/advertisements/banner1.png',
             'percent' => 10.00,
             'amount' => 0.00,
             'min' => 500.00
         ],
         [
-            'title' => 'Engine Oil 5% Off',
-            'desc' => 'Get 5% discount on engine oil',
+            'title' => 'Engine Oil 15% Off',
+            'desc' => 'Get 15% discount on engine oil',
             'image_url' => 'https://hascol.allowance.flamboyant-spence.92-205-119-218.plesk.page/uploads/advertisements/banner2.png',
             'percent' => 5.00,
             'amount' => 0.00,
             'min' => 1000.00
         ],
         [
-            'title' => 'Fuel 3% Off',
-            'desc' => 'Get 3% discount on fuel',
+            'title' => 'Fuel 15% Off',
+            'desc' => 'Get 15% discount on fuel',
             'image_url' => 'https://hascol.allowance.flamboyant-spence.92-205-119-218.plesk.page/uploads/advertisements/banner3.png',
             'percent' => 3.00,
             'amount' => 0.00,
