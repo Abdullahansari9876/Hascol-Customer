@@ -1,6 +1,6 @@
 <?php
 /**
- * REGISTER + OTP + IMEI + MOBILE + PASSWORD (HASH + PLAIN) + 3 COUPONS + COUPON_NO + SKIP OTP + DESCRIPTION
+ * REGISTER + OTP + IMEI + MOBILE + PASSWORD (HASH + PLAIN) + 3 COUPONS + COUPON_NO + SKIP OTP
  * 
  * POST /api/register.php
  * 
@@ -18,7 +18,6 @@
  *
  * REQUIRES (database):
  *   hascol_customer.password_plain VARCHAR(255) NULL
- *   hascol_customer.description   TEXT NULL
  */
 
 error_reporting(E_ALL);
@@ -50,7 +49,6 @@ $email = trim($input['email'] ?? '');
 $imei = trim($input['imei'] ?? '');
 $mobile = normalizeMobile(trim($input['mobile'] ?? ''));
 $password = trim($input['password'] ?? '');
-$description = trim($input['description'] ?? '');
 
 // ✅ coupon_no ya referral_no — dono accept karo
 $userReferralNo = trim($input['coupon_no'] ?? $input['referral_no'] ?? '');
@@ -79,12 +77,6 @@ if (strlen($password) < 6) {
 if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
     jsonResponse(['status' => 'error', 'message' => 'Invalid email format']);
 }
-
-// ─── description validation (optional field) ───
-if (mb_strlen($description) > 2000) {
-    jsonResponse(['status' => 'error', 'message' => 'Description must not exceed 2000 characters']);
-}
-$description = ($description === '') ? null : $description;   // khali ho toh NULL save hoga
 
 // ─── referral_no validation (agar diya gaya) ───
 if (!empty($userReferralNo)) {
@@ -246,14 +238,14 @@ if (!empty($userReferralNo)) {
 $verifiedStatus = ($skipOtp === 1) ? 1 : 0;
 $verifiedAt = ($skipOtp === 1) ? date('Y-m-d H:i:s') : null;
 
-// 14 placeholders = 14 bind types ("ssssssssssisss")
+// 13 placeholders = 13 bind types ("ssssssssssiss")
 $stmt = $db->prepare("
     INSERT INTO hascol_customer 
-    (player_key, player_id, name, email, mobile, password, password_plain, imei, coupon_no, customer_type, verified, verified_at, status, ip_address, description, created_at, updated_at) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NOW(), NOW())
+    (player_key, player_id, name, email, mobile, password, password_plain, imei, coupon_no, customer_type, verified, verified_at, status, ip_address, created_at, updated_at) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, NOW(), NOW())
 ");
 $stmt->bind_param(
-    "ssssssssssisss",
+    "ssssssssssiss",
     $key,
     $playerId,
     $name,
@@ -266,8 +258,7 @@ $stmt->bind_param(
     $customerType,
     $verifiedStatus,
     $verifiedAt,
-    $ip,
-    $description
+    $ip
 );
 if (!$stmt->execute()) {
     error_log("REGISTER: customer insert failed. player_id=$playerId, mobile=$mobile, imei=$imei, error=" . $stmt->error);
@@ -449,7 +440,6 @@ fbSet("hascol_customer/$key", [
     'imei' => $imei,
     'coupon_no' => $couponNo,
     'customer_type' => $customerType,
-    'description' => $description,
     'verified' => ($verifiedStatus === 1),
     'created_at' => $existing['created_at'] ?? date('Y-m-d H:i:s'),
     'updated_at' => date('Y-m-d H:i:s'),

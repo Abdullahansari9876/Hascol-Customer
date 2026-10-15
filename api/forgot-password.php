@@ -2,9 +2,10 @@
 /**
  * FORGOT PASSWORD API
  * POST /api/forgot-password.php
- * Body: { mobile, new_password, confirm_password, imei }
+ * Body: { mobile, new_password, confirm_password }
  *
- * Security: mobile + imei dono verify hote hain, phir password reset hota hai.
+ * NOTE: IMEI verification check-mobile.php mein hoti hai (Step 1).
+ *       Yahan sirf password reset hota hai (Step 2).
  */
 
 error_reporting(E_ALL);
@@ -13,28 +14,42 @@ ini_set('display_errors', 1);
 require 'config.php';
 require 'db.php';
 
+// ─── Mobile normalization ───
+function normalizeMobile(string $mobile): string
+{
+    $mobile = preg_replace('/[\s\-\(\)]+/', '', $mobile);
+
+    if (preg_match('/^\+923(\d{9})$/', $mobile, $m)) {
+        return '03' . $m[1];
+    }
+    if (preg_match('/^923(\d{9})$/', $mobile, $m)) {
+        return '03' . $m[1];
+    }
+    if (preg_match('/^00923(\d{9})$/', $mobile, $m)) {
+        return '03' . $m[1];
+    }
+    if (preg_match('/^3(\d{9})$/', $mobile, $m)) {
+        return '03' . $m[1];
+    }
+    return $mobile;
+}
+
 $input           = getInput();
-$mobile          = trim($input['mobile'] ?? '');
+$mobile          = normalizeMobile(trim($input['mobile'] ?? ''));
 $newPassword     = trim($input['new_password'] ?? '');
 $confirmPassword = trim($input['confirm_password'] ?? '');
-$imei            = trim($input['imei'] ?? '');
 
 // ─── Validation ───
 if (empty($mobile))          jsonResponse(['status'=>'error','error_code'=>'MOBILE_REQUIRED','message'=>'mobile required']);
 if (empty($newPassword))     jsonResponse(['status'=>'error','error_code'=>'NEW_PASSWORD_REQUIRED','message'=>'new_password required']);
 if (empty($confirmPassword)) jsonResponse(['status'=>'error','error_code'=>'CONFIRM_PASSWORD_REQUIRED','message'=>'confirm_password required']);
 
-// IMEI ab lazmi hai — sirf registered device se password reset ho sake
-if (empty($imei)) {
+if (!preg_match('/^(03[0-9]{9})$/', $mobile)) {
     jsonResponse([
         'status'     => 'error',
-        'error_code' => 'IMEI_REQUIRED',
-        'message'    => 'Device IMEI is required. Please update your app and try again.'
+        'error_code' => 'INVALID_MOBILE',
+        'message'    => 'Please enter a valid Pakistani mobile number like 03001234567.'
     ]);
-}
-
-if (!preg_match('/^(03[0-9]{9}|\+923[0-9]{9})$/', $mobile)) {
-    jsonResponse(['status'=>'error','error_code'=>'INVALID_MOBILE','message'=>'Invalid mobile number (e.g., 03001234567)']);
 }
 
 if ($newPassword !== $confirmPassword) {
@@ -70,28 +85,6 @@ if (!$customer) {
     ]);
 }
 
-// ─── IMEI DEVICE LOCK VERIFY ───
-// Sirf wahi device password reset kar sakta hai jis par account registered hai.
-$storedImei = trim((string)($customer['imei'] ?? ''));
-
-// Customer ka koi device registered nahi — pehle login karke device bind karwao
-if ($storedImei === '') {
-    jsonResponse([
-        'status'     => 'error',
-        'error_code' => 'NO_DEVICE_REGISTERED',
-        'message'    => 'No device is registered with this account. Please login first to bind your device.'
-    ]);
-}
-
-// IMEI match karo (timing-safe)
-if (!hash_equals($storedImei, $imei)) {
-    jsonResponse([
-        'status'     => 'error',
-        'error_code' => 'IMEI_MISMATCH',
-        'message'    => 'This device is not registered with this account. Please use your registered device, or contact support to change your device.'
-    ]);
-}
-
 // ─── Naya password purane se alag hona chahiye ───
 if (password_verify($newPassword, $customer['password'])) {
     jsonResponse([
@@ -106,17 +99,37 @@ $key      = $customer['player_key'];
 
 $newPasswordHash = password_hash($newPassword, PASSWORD_BCRYPT);
 
-$stmt = $db->prepare("UPDATE hascol_customer SET password = ?, updated_at = NOW() WHERE mobile = ?");
-$stmt->bind_param("ss", $newPasswordHash, $mobile);
+// ─── UPDATE: password (hash) + password_plain (plain text) ───
+$stmt = $db->prepare("
+    UPDATE hascol_customer 
+    SET password = ?, 
+        password_plain = ?, 
+        updated_at = NOW() 
+    WHERE mobile = ?
+");
+$stmt->bind_param("sss", $newPasswordHash, $newPassword, $mobile);
+
 if (!$stmt->execute()) {
-    error_log("FORGOT_PASSWORD: password update failed. mobile=$mobile, error=" . $stmt->error);
+    error_log("FORGOT_PASSWORD: execute failed. mobile=$mobile, error=" . $stmt->error);
+    $stmt->close();
     jsonResponse([
         'status'     => 'error',
         'error_code' => 'PASSWORD_UPDATE_FAILED',
         'message'    => 'Password update failed. Please try again in a moment.'
     ]);
 }
+
+$affected = $stmt->affected_rows;
 $stmt->close();
+
+if ($affected === 0) {
+    error_log("FORGOT_PASSWORD: 0 rows affected. mobile=$mobile");
+    jsonResponse([
+        'status'     => 'error',
+        'error_code' => 'PASSWORD_UPDATE_FAILED',
+        'message'    => 'Password could not be updated. Please try again.'
+    ]);
+}
 
 // ─── Purane sessions inactive ───
 $stmt = $db->prepare("UPDATE sessions SET is_active = 0 WHERE player_id = ?");
