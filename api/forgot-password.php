@@ -64,10 +64,6 @@ if (strlen($newPassword) > 50) {
     jsonResponse(['status'=>'error','error_code'=>'PASSWORD_TOO_LONG','message'=>'New password must be less than 50 characters']);
 }
 
-if (!preg_match('/[A-Za-z]/', $newPassword) || !preg_match('/[0-9]/', $newPassword)) {
-    jsonResponse(['status'=>'error','error_code'=>'WEAK_PASSWORD','message'=>'Password must contain at least one letter and one number']);
-}
-
 $ip = getClientIp();
 
 // ─── Mobile se customer dhoondein ───
