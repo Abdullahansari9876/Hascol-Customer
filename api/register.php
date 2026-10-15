@@ -349,7 +349,7 @@ if ($couponCount == 0) {
             'title' => 'Welcome 15% Off',
             'desc' => 'Get 15% discount on your first purchase',
             'image_url' => 'https://hascol.allowance.flamboyant-spence.92-205-119-218.plesk.page/uploads/advertisements/banner1.png',
-            'percent' => 10.00,
+            'percent' => 15.00,
             'amount' => 0.00,
             'min' => 500.00
         ],
@@ -357,7 +357,7 @@ if ($couponCount == 0) {
             'title' => 'Engine Oil 15% Off',
             'desc' => 'Get 15% discount on engine oil',
             'image_url' => 'https://hascol.allowance.flamboyant-spence.92-205-119-218.plesk.page/uploads/advertisements/banner2.png',
-            'percent' => 5.00,
+            'percent' => 15.00,
             'amount' => 0.00,
             'min' => 1000.00
         ],
@@ -365,7 +365,7 @@ if ($couponCount == 0) {
             'title' => 'Fuel 15% Off',
             'desc' => 'Get 15% discount on fuel',
             'image_url' => 'https://hascol.allowance.flamboyant-spence.92-205-119-218.plesk.page/uploads/advertisements/banner3.png',
-            'percent' => 3.00,
+            'percent' => 15.00,
             'amount' => 0.00,
             'min' => 500.00
         ],
