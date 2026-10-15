@@ -8,10 +8,33 @@ require 'db.php';
 $input    = getInput();
 $mobile   = trim($input['mobile'] ?? '');
 $password = trim($input['password'] ?? '');
-$imei     = trim($input['imei'] ?? '');   
+$imei     = trim($input['imei'] ?? '');
 
-if (empty($mobile))   jsonResponse(['status'=>'error','message'=>'mobile required']);
-if (empty($password)) jsonResponse(['status'=>'error','message'=>'password required']);
+// ─── BASIC VALIDATION ───
+if (empty($mobile)) {
+    jsonResponse([
+        'status'     => 'error',
+        'error_code' => 'MOBILE_REQUIRED',
+        'message'    => 'Mobile number is required.'
+    ]);
+}
+
+if (empty($password)) {
+    jsonResponse([
+        'status'     => 'error',
+        'error_code' => 'PASSWORD_REQUIRED',
+        'message'    => 'Password is required.'
+    ]);
+}
+
+// IMEI ab lazmi hai — App har login par device ki IMEI/device-id bhejegi.
+if (empty($imei)) {
+    jsonResponse([
+        'status'     => 'error',
+        'error_code' => 'IMEI_REQUIRED',
+        'message'    => 'Device IMEI is required. Please update your app and try again.'
+    ]);
+}
 
 $ip = getClientIp();
 
@@ -22,41 +45,68 @@ $customer = $stmt->get_result()->fetch_assoc();
 $stmt->close();
 
 if (!$customer) {
-    jsonResponse(['status'=>'error','message'=>'Mobile number not registered']);
+    jsonResponse([
+        'status'     => 'error',
+        'error_code' => 'MOBILE_NOT_REGISTERED',
+        'message'    => 'Mobile number not registered.'
+    ]);
 }
 
 if (!password_verify($password, $customer['password'])) {
-    jsonResponse(['status'=>'error','message'=>'Invalid password']);
+    jsonResponse([
+        'status'     => 'error',
+        'error_code' => 'INVALID_PASSWORD',
+        'message'    => 'Invalid password.'
+    ]);
 }
 
 if ($customer['verified'] != 1) {
-    jsonResponse(['status'=>'error','message'=>'Account not verified.']);
+    jsonResponse([
+        'status'     => 'error',
+        'error_code' => 'ACCOUNT_NOT_VERIFIED',
+        'message'    => 'Account not verified.'
+    ]);
 }
 
 if ($customer['status'] !== 'active') {
-    jsonResponse(['status'=>'error','message'=>'Account is ' . $customer['status']]);
+    jsonResponse([
+        'status'     => 'error',
+        'error_code' => 'ACCOUNT_INACTIVE',
+        'message'    => 'Account is ' . $customer['status'] . '.'
+    ]);
 }
 
-// ─── IMEI DEVICE LOCK ───
-// Registered IMEI se alag device par login block. IMEI kabhi overwrite nahi hoti.
+// ─── IMEI DEVICE LOCK (STRICT) ───
+// Rule:
+//  - IMEI request mein lazmi hai (upar validate ho chuki).
+//  - Agar DB mein IMEI khali hai  -> pehli dafa bind karo.
+//  - Agar DB mein IMEI saved hai  -> exactly match honi chahiye, warna block.
+//  - IMEI kabhi overwrite nahi hoti.
 $storedImei = trim((string)($customer['imei'] ?? ''));
 
-if ($storedImei !== '') {
-    // Account pehle se ek device se bandha hai
-    if ($imei === '' || !hash_equals($storedImei, $imei)) {
-        jsonResponse([
-            'status'     => 'error',
-            'error_code' => 'DEVICE_MISMATCH',
-            'message'    => 'This account is registered on another device. Login from a new device is not allowed. Please contact support.'
-        ]);
-    }
-} elseif ($imei !== '') {
-    // Purana customer jiski IMEI abhi khali hai: pehli dafa device bind karo
+if ($storedImei === '') {
+    // Pehli dafa: device bind karo
     $stmt = $db->prepare("UPDATE hascol_customer SET imei = ? WHERE id = ?");
     $stmt->bind_param("si", $imei, $customer['id']);
-    $stmt->execute();
+    if (!$stmt->execute()) {
+        $stmt->close();
+        jsonResponse([
+            'status'     => 'error',
+            'error_code' => 'IMEI_BIND_FAILED',
+            'message'    => 'Unable to bind device. Please try again.'
+        ]);
+    }
     $stmt->close();
     $customer['imei'] = $imei;
+} else {
+    // Already bound: strict match
+    if (!hash_equals($storedImei, $imei)) {
+        jsonResponse([
+            'status'     => 'error',
+            'error_code' => 'IMEI_MISMATCH',
+            'message'    => 'This account is locked to a different device. Please contact support to reset your device lock.'
+        ]);
+    }
 }
 
 $key      = $customer['player_key'];
@@ -79,7 +129,11 @@ $stmt = $db->prepare("
 ");
 $stmt->bind_param("sssss", $token, $key, $playerId, $ip, $userAgent);
 if (!$stmt->execute()) {
-    jsonResponse(['status'=>'error','message'=>'Session save failed: ' . $stmt->error]);
+    jsonResponse([
+        'status'     => 'error',
+        'error_code' => 'SESSION_SAVE_FAILED',
+        'message'    => 'Session save failed: ' . $stmt->error
+    ]);
 }
 $stmt->close();
 
@@ -105,7 +159,7 @@ jsonResponse([
         'name'       => $customer['name'],
         'email'      => $customer['email'] ?? '',
         'mobile'     => $customer['mobile'] ?? '',
-        'imei'       => $customer['imei'] ?? '',  
+        'imei'       => $customer['imei'] ?? '',
         'verified'   => true,
     ],
 ]);

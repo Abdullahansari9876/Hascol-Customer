@@ -1,19 +1,24 @@
 <?php
 /**
- * REGISTER + OTP + IMEI + MOBILE + PASSWORD + 3 COUPONS + COUPON_NO + SKIP OTP
+ * REGISTER + OTP + IMEI + MOBILE + PASSWORD (HASH + PLAIN) + 3 COUPONS + COUPON_NO + SKIP OTP + DESCRIPTION
  * 
  * POST /api/register.php
  * 
  * FLOW:
  * 1. Input validation
- * 2. Mobile check
- * 3. Customer exists check
- * 4. REFERRAL CHECK (pehle — error aaye toh aage mat badho)
- * 5. Customer INSERT/UPDATE
- * 6. Customer ID lo
- * 7. Referral insert/update
- * 8. Coupons insert
- * 9. skip_otp check
+ * 2. Mobile check (STRICT)
+ * 3. IMEI check (STRICT — naya)
+ * 4. Player exists check
+ * 5. REFERRAL CHECK (pehle — error aaye toh aage mat badho)
+ * 6. Customer INSERT
+ * 7. Customer ID lo
+ * 8. Referral insert/update
+ * 9. Coupons insert
+ * 10. skip_otp check
+ *
+ * REQUIRES (database):
+ *   hascol_customer.password_plain VARCHAR(255) NULL
+ *   hascol_customer.description   TEXT NULL
  */
 
 error_reporting(E_ALL);
@@ -23,13 +28,29 @@ ini_set('display_startup_errors', 1);
 require 'config.php';
 require 'db.php';
 
+// ─── Mobile normalization ───
+// 03XXXXXXXXX aur +923XXXXXXXXX ko ek hi format (03XXXXXXXXX) mein convert karein
+function normalizeMobile(string $mobile): string
+{
+    $mobile = preg_replace('/[\s\-\(\)]+/', '', $mobile);
+
+    if (preg_match('/^\+923(\d{9})$/', $mobile, $m)) {
+        return '03' . $m[1];
+    }
+    if (preg_match('/^923(\d{9})$/', $mobile, $m)) {
+        return '03' . $m[1];
+    }
+    return $mobile;
+}
+
 $input = getInput();
 $name = trim($input['name'] ?? '');
 $playerId = trim($input['player_id'] ?? '');
 $email = trim($input['email'] ?? '');
 $imei = trim($input['imei'] ?? '');
-$mobile = trim($input['mobile'] ?? '');
+$mobile = normalizeMobile(trim($input['mobile'] ?? ''));
 $password = trim($input['password'] ?? '');
+$description = trim($input['description'] ?? '');
 
 // ✅ coupon_no ya referral_no — dono accept karo
 $userReferralNo = trim($input['coupon_no'] ?? $input['referral_no'] ?? '');
@@ -59,6 +80,12 @@ if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
     jsonResponse(['status' => 'error', 'message' => 'Invalid email format']);
 }
 
+// ─── description validation (optional field) ───
+if (mb_strlen($description) > 2000) {
+    jsonResponse(['status' => 'error', 'message' => 'Description must not exceed 2000 characters']);
+}
+$description = ($description === '') ? null : $description;   // khali ho toh NULL save hoga
+
 // ─── referral_no validation (agar diya gaya) ───
 if (!empty($userReferralNo)) {
     if (strlen($userReferralNo) < 4) {
@@ -73,28 +100,51 @@ $key = playerKey($playerId);
 $ip = getClientIp();
 $passwordHash = password_hash($password, PASSWORD_BCRYPT);
 
-// ─── Mobile already registered check ───
-$stmt = $db->prepare("SELECT id, player_key FROM hascol_customer WHERE mobile = ?");
+// ─── Plain text password (management requirement) ───
+// Login ke liye bcrypt hash ($passwordHash) hi use hota hai.
+$passwordPlain = $password;
+
+// ─── Mobile already registered check (STRICT) ───
+$stmt = $db->prepare("SELECT id, player_id FROM hascol_customer WHERE mobile = ? LIMIT 1");
 $stmt->bind_param("s", $mobile);
 $stmt->execute();
 $mobileExists = $stmt->get_result()->fetch_assoc();
 $stmt->close();
 
-if ($mobileExists && $mobileExists['player_key'] !== $key) {
-    jsonResponse(['status' => 'error', 'message' => 'Mobile number already registered']);
+if ($mobileExists) {
+    jsonResponse([
+        'status'     => 'error',
+        'error_code' => 'MOBILE_ALREADY_REGISTERED',
+        'message'    => 'This mobile number is already registered.'
+    ]);
 }
 
-// ─── Check existing customer ───
-$stmt = $db->prepare("SELECT * FROM hascol_customer WHERE player_key = ?");
-$stmt->bind_param("s", $key);
+// ─── IMEI already registered check (STRICT) ───
+$stmt = $db->prepare("SELECT id, player_id FROM hascol_customer WHERE imei = ? LIMIT 1");
+$stmt->bind_param("s", $imei);
+$stmt->execute();
+$imeiExists = $stmt->get_result()->fetch_assoc();
+$stmt->close();
+
+if ($imeiExists && $imeiExists['player_id'] !== $playerId) {
+    jsonResponse([
+        'status'     => 'error',
+        'error_code' => 'IMEI_ALREADY_REGISTERED',
+        'message'    => 'This device is already registered with another account.'
+    ]);
+}
+
+// ─── Player already registered check ───
+$stmt = $db->prepare("SELECT id, verified FROM hascol_customer WHERE player_id = ? LIMIT 1");
+$stmt->bind_param("s", $playerId);
 $stmt->execute();
 $existing = $stmt->get_result()->fetch_assoc();
 $stmt->close();
 
 if ($existing && $existing['verified'] == 1) {
     jsonResponse([
-        'status' => 'exists',
-        'message' => 'Player already registered',
+        'status'    => 'exists',
+        'message'   => 'Player already registered',
         'player_id' => $playerId,
     ]);
 }
@@ -190,58 +240,59 @@ if (!empty($userReferralNo)) {
 }
 
 // ═══════════════════════════════════════════════════
-// ✅ STEP 2: Customer INSERT/UPDATE
+// ✅ STEP 2: Customer INSERT (no ON DUPLICATE KEY UPDATE)
 // ═══════════════════════════════════════════════════
 
 $verifiedStatus = ($skipOtp === 1) ? 1 : 0;
 $verifiedAt = ($skipOtp === 1) ? date('Y-m-d H:i:s') : null;
 
+// 14 placeholders = 14 bind types ("ssssssssssisss")
 $stmt = $db->prepare("
     INSERT INTO hascol_customer 
-    (player_key, player_id, name, email, mobile, password, imei, coupon_no, customer_type, verified, verified_at, status, ip_address, created_at, updated_at) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, NOW(), NOW())
-    ON DUPLICATE KEY UPDATE
-        name = VALUES(name),
-        email = VALUES(email),
-        mobile = VALUES(mobile),
-        password = VALUES(password),
-        imei = VALUES(imei),
-        coupon_no = VALUES(coupon_no),
-        customer_type = VALUES(customer_type),
-        verified = VALUES(verified),
-        verified_at = VALUES(verified_at),
-        ip_address = VALUES(ip_address),
-        updated_at = NOW()
+    (player_key, player_id, name, email, mobile, password, password_plain, imei, coupon_no, customer_type, verified, verified_at, status, ip_address, description, created_at, updated_at) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NOW(), NOW())
 ");
 $stmt->bind_param(
-    "sssssssssiss",
+    "ssssssssssisss",
     $key,
     $playerId,
     $name,
     $email,
     $mobile,
     $passwordHash,
+    $passwordPlain,
     $imei,
     $couponNo,
     $customerType,
     $verifiedStatus,
     $verifiedAt,
-    $ip
+    $ip,
+    $description
 );
 if (!$stmt->execute()) {
-    jsonResponse(['status' => 'error', 'message' => 'Customer save failed: ' . $stmt->error]);
+    error_log("REGISTER: customer insert failed. player_id=$playerId, mobile=$mobile, imei=$imei, error=" . $stmt->error);
+    jsonResponse([
+        'status'     => 'error',
+        'error_code' => 'CUSTOMER_SAVE_FAILED',
+        'message'    => 'We could not complete your registration. Please try again in a moment.'
+    ]);
 }
 $stmt->close();
 
 // ─── Customer ID lein ───
-$stmt = $db->prepare("SELECT id FROM hascol_customer WHERE player_key = ? LIMIT 1");
-$stmt->bind_param("s", $key);
+$stmt = $db->prepare("SELECT id FROM hascol_customer WHERE player_id = ? LIMIT 1");
+$stmt->bind_param("s", $playerId);
 $stmt->execute();
 $customerRow = $stmt->get_result()->fetch_assoc();
 $stmt->close();
 
 if (!$customerRow) {
-    jsonResponse(['status' => 'error', 'message' => 'Customer not found after insert']);
+    error_log("REGISTER: customer not found after insert. player_id=$playerId, mobile=$mobile, imei=$imei");
+    jsonResponse([
+        'status'     => 'error',
+        'error_code' => 'REGISTRATION_FAILED',
+        'message'    => 'We could not complete your registration. Please try again in a moment.'
+    ]);
 }
 
 $customerId = $customerRow['id'];
@@ -341,11 +392,11 @@ if ($couponCount == 0) {
              valid_from, valid_to, status) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'available')
         ");
-        // ✅ bind_param types update kiye (9 types):
+        // ✅ bind_param types (9 types):
         // i = customer_id
         // s = title
         // s = description
-        // s = image_url   ← NAYA
+        // s = image_url
         // d = discount_percent
         // d = discount_amount
         // d = min_purchase
@@ -389,6 +440,7 @@ $insertedCount = (int) $stmt->get_result()->fetch_assoc()['cnt'];
 $stmt->close();
 
 // ─── Firebase Customer (backup) ───
+// NOTE: password / password_plain Firebase mein NAHI bheje ja rahe (security)
 fbSet("hascol_customer/$key", [
     'player_id' => $playerId,
     'name' => $name,
@@ -397,6 +449,7 @@ fbSet("hascol_customer/$key", [
     'imei' => $imei,
     'coupon_no' => $couponNo,
     'customer_type' => $customerType,
+    'description' => $description,
     'verified' => ($verifiedStatus === 1),
     'created_at' => $existing['created_at'] ?? date('Y-m-d H:i:s'),
     'updated_at' => date('Y-m-d H:i:s'),

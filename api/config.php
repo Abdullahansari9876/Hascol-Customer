@@ -13,6 +13,14 @@ define('OTP_EXPIRY', 600);        // 10 minutes
 define('OTP_MAX_ATTEMPTS', 5);
 
 // ============================================
+// PASSWORD ENCRYPTION KEY (AES-256-GCM)
+// ⚠️ Is key ko kisi ke saath share na karein aur Git mein commit na karein.
+// ⚠️ Key badalne par pehle se save kiye hue password_enc decode nahi honge.
+// ⚠️ Key ka alag jagah backup zaroor rakhein.
+// ============================================
+define('PASSWORD_ENC_KEY', '9b79441fe979752861f8ba0f4d9f6d2868d5f4b279c6df23db4e3749bafb039a');
+
+// ============================================
 // HELPERS: Input / Output
 // ============================================
 function jsonResponse($data, $code = 200) {
@@ -80,4 +88,38 @@ function fbDelete($path) {
 
 function playerKey($playerId) {
     return preg_replace('/[^a-zA-Z0-9]/', '_', strtolower($playerId));
+}
+
+// ============================================
+// PASSWORD ENCRYPT / DECRYPT (AES-256-GCM)
+// register.php, change/reset password aur admin panel mein use hote hain
+// ============================================
+function encryptPassword(string $plain): string {
+    $key = hex2bin(PASSWORD_ENC_KEY);
+    if ($key === false || strlen($key) !== 32) {
+        return '';
+    }
+    $iv  = random_bytes(12);
+    $tag = '';
+    $cipher = openssl_encrypt($plain, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag);
+    if ($cipher === false) {
+        return '';
+    }
+    return base64_encode($iv . $tag . $cipher);
+}
+
+function decryptPassword(string $stored): ?string {
+    $raw = base64_decode($stored, true);
+    if ($raw === false || strlen($raw) < 29) {
+        return null;
+    }
+    $key = hex2bin(PASSWORD_ENC_KEY);
+    if ($key === false || strlen($key) !== 32) {
+        return null;
+    }
+    $iv     = substr($raw, 0, 12);
+    $tag    = substr($raw, 12, 16);
+    $cipher = substr($raw, 28);
+    $plain  = openssl_decrypt($cipher, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag);
+    return $plain === false ? null : $plain;
 }

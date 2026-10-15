@@ -55,15 +55,26 @@ if ($date_to !== '') {
     $types .= 's';
 }
 
+// ─── SELECT: ab user_name + referred_by_customer_id bhi include ───
+// ─── JOIN: do LEFT JOINs — used_by aur referred_by dono ke liye ───
 $sql = "
     SELECT 
-        r.id, r.referral_no, r.is_used, r.used_by_customer_id, 
-        r.used_at, r.created_at,
-        c.name AS used_by_name,
-        c.mobile AS used_by_mobile,
-        c.email AS used_by_email
+        r.id, 
+        r.referral_no, 
+        r.user_name, 
+        r.referred_by_customer_id, 
+        r.is_used, 
+        r.used_by_customer_id, 
+        r.used_at, 
+        r.created_at,
+        c1.name   AS used_by_name,
+        c1.mobile AS used_by_mobile,
+        c1.email  AS used_by_email,
+        c2.name   AS referred_by_name,
+        c2.mobile AS referred_by_mobile
     FROM referral_numbers r
-    LEFT JOIN hascol_customer c ON c.id = r.used_by_customer_id
+    LEFT JOIN hascol_customer c1 ON c1.id = r.used_by_customer_id
+    LEFT JOIN hascol_customer c2 ON c2.id = r.referred_by_customer_id
 ";
 
 if (!empty($where)) {
@@ -87,15 +98,21 @@ while ($row = $result->fetch_assoc()) {
     else $total_unused++;
 
     $referrals[] = [
-        'id'                  => (int)$row['id'],
-        'referral_no'         => $row['referral_no'],
-        'is_used'             => (int)$row['is_used'],
-        'used_by_customer_id' => $row['used_by_customer_id'] ? (int)$row['used_by_customer_id'] : null,
-        'used_by_name'        => $row['used_by_name'] ?? null,
-        'used_by_mobile'      => $row['used_by_mobile'] ?? null,
-        'used_by_email'       => $row['used_by_email'] ?? null,
-        'used_at'             => $row['used_at'],
-        'created_at'          => $row['created_at'],
+        'id'                      => (int)$row['id'],
+        'referral_no'             => $row['referral_no'],
+        // ─── NAYE FIELDS ───
+        'user_name'               => $row['user_name'] ?? null,
+        'referred_by_customer_id' => $row['referred_by_customer_id'] ? (int)$row['referred_by_customer_id'] : null,
+        'referred_by_name'        => $row['referred_by_name'] ?? null,
+        'referred_by_mobile'      => $row['referred_by_mobile'] ?? null,
+        // ─── EXISTING FIELDS ───
+        'is_used'                 => (int)$row['is_used'],
+        'used_by_customer_id'     => $row['used_by_customer_id'] ? (int)$row['used_by_customer_id'] : null,
+        'used_by_name'            => $row['used_by_name'] ?? null,
+        'used_by_mobile'          => $row['used_by_mobile'] ?? null,
+        'used_by_email'           => $row['used_by_email'] ?? null,
+        'used_at'                 => $row['used_at'],
+        'created_at'              => $row['created_at'],
     ];
 }
 $stmt->close();
