@@ -1,13 +1,20 @@
 <?php
 /**
- * CHANGE PASSWORD API (Without Mobile — NOT RECOMMENDED)
- * 
+ * CHANGE PASSWORD API
+ *
  * POST /api/change-password.php
- * Body: { 
+ * Body: {
+ *   id:               "22",
  *   current_password: "oldpass123",
- *   new_password: "newpass456",
+ *   new_password:     "newpass456",
  *   confirm_password: "newpass456"
  * }
+ *
+ * Flow:
+ *  1. id (hascol_customer.id) se customer dhoondein (sirf ek)
+ *  2. Usi customer ka current_password verify karein
+ *  3. Match hone par naya password save karein
+ *  4. Saare purane sessions inactive kar dein
  */
 
 error_reporting(E_ALL);
@@ -17,73 +24,123 @@ require 'config.php';
 require 'db.php';
 
 $input           = getInput();
+$customerId      = (int)($input['id'] ?? 0);
 $currentPassword = trim($input['current_password'] ?? '');
 $newPassword     = trim($input['new_password'] ?? '');
 $confirmPassword = trim($input['confirm_password'] ?? '');
 
 // ─── Validation ───
+if ($customerId <= 0) {
+    jsonResponse(['status'=>'error','error_code'=>'ID_REQUIRED','message'=>'id required']);
+}
 if (empty($currentPassword)) {
-    jsonResponse(['status'=>'error','message'=>'current_password required']);
+    jsonResponse(['status'=>'error','error_code'=>'CURRENT_PASSWORD_REQUIRED','message'=>'current_password required']);
 }
 if (empty($newPassword)) {
-    jsonResponse(['status'=>'error','message'=>'new_password required']);
+    jsonResponse(['status'=>'error','error_code'=>'NEW_PASSWORD_REQUIRED','message'=>'new_password required']);
 }
 if (empty($confirmPassword)) {
-    jsonResponse(['status'=>'error','message'=>'confirm_password required']);
+    jsonResponse(['status'=>'error','error_code'=>'CONFIRM_PASSWORD_REQUIRED','message'=>'confirm_password required']);
 }
 
-// New password aur confirm password match hone chahiye
 if ($newPassword !== $confirmPassword) {
-    jsonResponse(['status'=>'error','message'=>'New password and confirm password do not match']);
+    jsonResponse(['status'=>'error','error_code'=>'PASSWORD_MISMATCH','message'=>'New password and confirm password do not match']);
 }
 
-// New password minimum 6 characters
 if (strlen($newPassword) < 6) {
-    jsonResponse(['status'=>'error','message'=>'New password must be at least 6 characters']);
+    jsonResponse(['status'=>'error','error_code'=>'PASSWORD_TOO_SHORT','message'=>'New password must be at least 6 characters']);
 }
 
-// New password current password se alag hona chahiye
+if (strlen($newPassword) > 50) {
+    jsonResponse(['status'=>'error','error_code'=>'PASSWORD_TOO_LONG','message'=>'New password must be less than 50 characters']);
+}
+
+if (!preg_match('/[A-Za-z]/', $newPassword) || !preg_match('/[0-9]/', $newPassword)) {
+    jsonResponse(['status'=>'error','error_code'=>'WEAK_PASSWORD','message'=>'Password must contain at least one letter and one number']);
+}
+
 if ($newPassword === $currentPassword) {
-    jsonResponse(['status'=>'error','message'=>'New password must be different from current password']);
+    jsonResponse(['status'=>'error','error_code'=>'PASSWORD_SAME_AS_OLD','message'=>'New password must be different from current password']);
 }
 
 $ip = getClientIp();
 
-// ─── ⚠️ Saare hascol_customer lein aur current password match karein ───
-$stmt = $db->prepare("SELECT * FROM hascol_customer WHERE verified = 1");
+// ─── id se customer dhoondein (sirf ek) ───
+$stmt = $db->prepare("SELECT * FROM hascol_customer WHERE id = ? LIMIT 1");
+$stmt->bind_param("i", $customerId);
 $stmt->execute();
-$result = $stmt->get_result();
-
-$matchedCustomer = null;
-while ($row = $result->fetch_assoc()) {
-    if (password_verify($currentPassword, $row['password'])) {
-        $matchedCustomer = $row;
-        break;   // ⚠️ Pehla match milte hi ruk jayega
-    }
-}
+$customer = $stmt->get_result()->fetch_assoc();
 $stmt->close();
 
-if (!$matchedCustomer) {
-    jsonResponse(['status'=>'error','message'=>'Current password is incorrect']);
+if (!$customer) {
+    jsonResponse([
+        'status'     => 'error',
+        'error_code' => 'CUSTOMER_NOT_FOUND',
+        'message'    => 'Customer not found.'
+    ]);
 }
 
-$playerId = $matchedCustomer['player_id'];
-$key      = $matchedCustomer['player_key'];
+if ((int)$customer['verified'] !== 1) {
+    jsonResponse([
+        'status'     => 'error',
+        'error_code' => 'ACCOUNT_NOT_VERIFIED',
+        'message'    => 'Account not verified.'
+    ]);
+}
 
-// ─── Naya password hash karein ───
+if ($customer['status'] !== 'active') {
+    jsonResponse([
+        'status'     => 'error',
+        'error_code' => 'ACCOUNT_INACTIVE',
+        'message'    => 'Account is ' . $customer['status'] . '.'
+    ]);
+}
+
+// ─── Sirf USI customer ka current password verify karo ───
+if (!password_verify($currentPassword, $customer['password'])) {
+    jsonResponse([
+        'status'     => 'error',
+        'error_code' => 'INVALID_CURRENT_PASSWORD',
+        'message'    => 'Your current password is incorrect.'
+    ]);
+}
+
+$playerId = $customer['player_id'];
+$key      = $customer['player_key'];
+
 $newPasswordHash = password_hash($newPassword, PASSWORD_BCRYPT);
 
-// ─── MySQL mein password update karein ───
+// ─── UPDATE: password (hash) + password_plain (plain text) ───
 $stmt = $db->prepare("
     UPDATE hascol_customer 
-    SET password = ?, updated_at = NOW() 
-    WHERE player_id = ?
+    SET password = ?, 
+        password_plain = ?, 
+        updated_at = NOW() 
+    WHERE id = ?
 ");
-$stmt->bind_param("ss", $newPasswordHash, $playerId);
+$stmt->bind_param("ssi", $newPasswordHash, $newPassword, $customer['id']);
+
 if (!$stmt->execute()) {
-    jsonResponse(['status'=>'error','message'=>'Password update failed: ' . $stmt->error]);
+    error_log("CHANGE_PASSWORD: execute failed. id={$customer['id']}, error=" . $stmt->error);
+    $stmt->close();
+    jsonResponse([
+        'status'     => 'error',
+        'error_code' => 'PASSWORD_UPDATE_FAILED',
+        'message'    => 'Password update failed. Please try again.'
+    ]);
 }
+
+$affected = $stmt->affected_rows;
 $stmt->close();
+
+if ($affected === 0) {
+    error_log("CHANGE_PASSWORD: 0 rows affected. id={$customer['id']}");
+    jsonResponse([
+        'status'     => 'error',
+        'error_code' => 'PASSWORD_UPDATE_FAILED',
+        'message'    => 'Password could not be updated. Please try again.'
+    ]);
+}
 
 // ─── Security: Saare purane sessions inactive kar dein ───
 $stmt = $db->prepare("UPDATE sessions SET is_active = 0 WHERE player_id = ?");
