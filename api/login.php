@@ -5,10 +5,20 @@ ini_set('display_errors', 1);
 require 'config.php';
 require 'db.php';
 
+// ═══════════════════════════════════════════════════════════
+// TEST USER LOCK (sirf testing ke liye)
+// Is list ke mobile number bagair IMEI ke login kar sakte hain.
+// Password, verified aur active checks phir bhi lagte hain.
+// Testing khatam hone par is list ko khali kar dein: []
+// ═══════════════════════════════════════════════════════════
+$TEST_NO_IMEI_MOBILES = ['03000000001'];
+
 $input    = getInput();
 $mobile   = trim($input['mobile'] ?? '');
 $password = trim($input['password'] ?? '');
 $imei     = trim($input['imei'] ?? '');
+
+$isTestUser = in_array($mobile, $TEST_NO_IMEI_MOBILES, true);
 
 // ─── BASIC VALIDATION ───
 if (empty($mobile)) {
@@ -27,8 +37,8 @@ if (empty($password)) {
     ]);
 }
 
-// IMEI ab lazmi hai — App har login par device ki IMEI/device-id bhejegi.
-if (empty($imei)) {
+// IMEI lazmi hai — sirf test user ko chhor kar.
+if (empty($imei) && !$isTestUser) {
     jsonResponse([
         'status'     => 'error',
         'error_code' => 'IMEI_REQUIRED',
@@ -78,34 +88,37 @@ if ($customer['status'] !== 'active') {
 
 // ─── IMEI DEVICE LOCK (STRICT) ───
 // Rule:
-//  - IMEI request mein lazmi hai (upar validate ho chuki).
+//  - Test user: IMEI check/bind poori tarah skip.
+//  - Baqi users: IMEI request mein lazmi hai (upar validate ho chuki).
 //  - Agar DB mein IMEI khali hai  -> pehli dafa bind karo.
 //  - Agar DB mein IMEI saved hai  -> exactly match honi chahiye, warna block.
 //  - IMEI kabhi overwrite nahi hoti.
-$storedImei = trim((string)($customer['imei'] ?? ''));
+if (!$isTestUser) {
+    $storedImei = trim((string)($customer['imei'] ?? ''));
 
-if ($storedImei === '') {
-    // Pehli dafa: device bind karo
-    $stmt = $db->prepare("UPDATE hascol_customer SET imei = ? WHERE id = ?");
-    $stmt->bind_param("si", $imei, $customer['id']);
-    if (!$stmt->execute()) {
+    if ($storedImei === '') {
+        // Pehli dafa: device bind karo
+        $stmt = $db->prepare("UPDATE hascol_customer SET imei = ? WHERE id = ?");
+        $stmt->bind_param("si", $imei, $customer['id']);
+        if (!$stmt->execute()) {
+            $stmt->close();
+            jsonResponse([
+                'status'     => 'error',
+                'error_code' => 'IMEI_BIND_FAILED',
+                'message'    => 'Unable to bind device. Please try again.'
+            ]);
+        }
         $stmt->close();
-        jsonResponse([
-            'status'     => 'error',
-            'error_code' => 'IMEI_BIND_FAILED',
-            'message'    => 'Unable to bind device. Please try again.'
-        ]);
-    }
-    $stmt->close();
-    $customer['imei'] = $imei;
-} else {
-    // Already bound: strict match
-    if (!hash_equals($storedImei, $imei)) {
-        jsonResponse([
-            'status'     => 'error',
-            'error_code' => 'IMEI_MISMATCH',
-            'message'    => 'This account is locked to a different device. Please contact support to reset your device lock.'
-        ]);
+        $customer['imei'] = $imei;
+    } else {
+        // Already bound: strict match
+        if (!hash_equals($storedImei, $imei)) {
+            jsonResponse([
+                'status'     => 'error',
+                'error_code' => 'IMEI_MISMATCH',
+                'message'    => 'This account is locked to a different device. Please contact support to reset your device lock.'
+            ]);
+        }
     }
 }
 
