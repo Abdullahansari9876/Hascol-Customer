@@ -347,23 +347,23 @@ if ($couponCount == 0) {
     $defaultCoupons = [
         [
             'title' => 'Welcome 15% Off',
-            'desc' => 'Get 15% discount on your first purchase',
+            'desc' => 'Get 15% discount',
             'image_url' => 'https://hascol.allowance.flamboyant-spence.92-205-119-218.plesk.page/uploads/advertisements/banner1.png',
             'percent' => 15.00,
             'amount' => 0.00,
             'min' => 500.00
         ],
         [
-            'title' => 'Engine Oil 15% Off',
-            'desc' => 'Get 15% discount on engine oil',
+            'title' => 'Welcome 15% Off',
+            'desc' => 'Get 15% discount',
             'image_url' => 'https://hascol.allowance.flamboyant-spence.92-205-119-218.plesk.page/uploads/advertisements/banner2.png',
             'percent' => 15.00,
             'amount' => 0.00,
             'min' => 1000.00
         ],
         [
-            'title' => 'Fuel 15% Off',
-            'desc' => 'Get 15% discount on fuel',
+            'title' => 'Welcome 15% Off',
+            'desc' => 'Get 15% discount',
             'image_url' => 'https://hascol.allowance.flamboyant-spence.92-205-119-218.plesk.page/uploads/advertisements/banner3.png',
             'percent' => 15.00,
             'amount' => 0.00,
