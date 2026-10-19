@@ -1,16 +1,23 @@
 <?php
 /**
- * ASSIGN COUPONS TO A SPECIFIC EXISTING CUSTOMER
- * 
+ * ASSIGN COUPONS TO ONE OR MULTIPLE CUSTOMERS
+ *
  * POST /api/coupons-list/assign-coupons.php
- * 
- * INPUT (JSON):
- *   - customer_id     (int, required)
- *   - coupons_count   (int, 1-10, required)
- *   - discount_type   ("percent" | "flat", required)
- *   - discount_value  (decimal > 0, required)
- *   - title           (string, optional) — auto-generates "Welcome X% Off"
- *   - description     (string, optional) — auto-generates "Get X% Discount"
+ *
+ * INPUT (JSON) — two modes:
+ *
+ *   Mode A (single — backward compatible):
+ *     - customer_id     (int, required)
+ *
+ *   Mode B (multiple — new):
+ *     - customer_ids    (array of int, required)
+ *
+ *   Common fields:
+ *     - coupons_count   (int, 1-10, required)
+ *     - discount_type   ("percent" | "flat", required)
+ *     - discount_value  (decimal > 0, required)
+ *     - title           (string, optional)
+ *     - description     (string, optional)
  */
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -39,15 +46,29 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 // ═══════════════════════════════════════════════════
 $input = getInput();
 
-$customerId    = isset($input['customer_id'])    ? (int)    $input['customer_id']    : 0;
+// ── Collect customer IDs (support both single + multiple) ──
+$customerIds = [];
+
+if (!empty($input['customer_ids']) && is_array($input['customer_ids'])) {
+    foreach ($input['customer_ids'] as $cid) {
+        $cid = (int) $cid;
+        if ($cid > 0 && !in_array($cid, $customerIds, true)) {
+            $customerIds[] = $cid; // duplicate IDs remove
+        }
+    }
+} elseif (!empty($input['customer_id'])) {
+    $cid = (int) $input['customer_id'];
+    if ($cid > 0) $customerIds[] = $cid;
+}
+
 $couponsCount  = isset($input['coupons_count'])  ? (int)    $input['coupons_count']  : 0;
 $discountType  = isset($input['discount_type'])  ? trim($input['discount_type'])     : '';
 $discountValue = isset($input['discount_value']) ? (float)  $input['discount_value'] : 0;
 $title         = isset($input['title'])          ? trim($input['title'])             : '';
 $description   = isset($input['description'])    ? trim($input['description'])       : '';
 
-if ($customerId <= 0) {
-    jsonResponse(['status' => 'error', 'message' => 'Valid customer_id is required']);
+if (empty($customerIds)) {
+    jsonResponse(['status' => 'error', 'message' => 'Valid customer_id or customer_ids is required']);
 }
 if ($couponsCount < 1 || $couponsCount > 10) {
     jsonResponse(['status' => 'error', 'message' => 'coupons_count must be between 1 and 10']);
@@ -62,7 +83,7 @@ if ($discountType === 'percent' && $discountValue > 100) {
     jsonResponse(['status' => 'error', 'message' => 'Percent discount cannot exceed 100']);
 }
 
-// ── Format discount value for display (remove trailing zeros) ──
+// ── Format discount value for display ──
 $discountValueFormatted = rtrim(rtrim(number_format($discountValue, 2, '.', ''), '0'), '.');
 
 // ── Auto-generate Title if empty ──
@@ -90,53 +111,83 @@ $discountPercent = ($discountType === 'percent') ? $discountValue : 0.00;
 $discountAmount  = ($discountType === 'flat')    ? $discountValue : 0.00;
 
 // ═══════════════════════════════════════════════════
-// STEP 3: Customer exists + active check
+// STEP 3: Validate ALL customers (exists + active)
 // ═══════════════════════════════════════════════════
+$placeholders = implode(',', array_fill(0, count($customerIds), '?'));
+$types        = str_repeat('i', count($customerIds));
+
 $stmt = $db->prepare("
-    SELECT id, name, mobile, status 
-    FROM hascol_customer 
-    WHERE id = ? 
-    LIMIT 1
+    SELECT id, name, mobile, status
+    FROM hascol_customer
+    WHERE id IN ($placeholders)
 ");
-$stmt->bind_param("i", $customerId);
+$stmt->bind_param($types, ...$customerIds);
 $stmt->execute();
-$customer = $stmt->get_result()->fetch_assoc();
+$result = $stmt->get_result();
+
+$validCustomers = [];   // id => row
+$invalidIds     = [];
+
+while ($row = $result->fetch_assoc()) {
+    if ($row['status'] === 'active') {
+        $validCustomers[(int)$row['id']] = $row;
+    } else {
+        $invalidIds[] = (int)$row['id'];
+    }
+}
 $stmt->close();
 
-if (!$customer) {
-    jsonResponse(['status' => 'error', 'message' => 'Customer not found']);
+// Customer IDs jo DB me hi nahi mile
+foreach ($customerIds as $cid) {
+    if (!isset($validCustomers[$cid]) && !in_array($cid, $invalidIds, true)) {
+        $invalidIds[] = $cid;
+    }
 }
-if ($customer['status'] !== 'active') {
+
+if (empty($validCustomers)) {
     jsonResponse([
         'status'  => 'error',
-        'message' => 'Cannot assign coupons — customer status is "' . $customer['status'] . '"'
+        'message' => 'No active customers found for the selected IDs',
+        'invalid_ids' => $invalidIds,
     ]);
 }
 
 // ═══════════════════════════════════════════════════
-// STEP 4: Duplicate prevention (same customer + same title + same day)
+// STEP 4: Duplicate prevention — per customer
+//         (skip customer agar same title aaj already assigned)
 // ═══════════════════════════════════════════════════
-$stmt = $db->prepare("
-    SELECT COUNT(*) AS cnt 
-    FROM coupons 
-    WHERE customer_id = ? 
-      AND title = ? 
+$dupCustomerIds = [];
+$checkStmt = $db->prepare("
+    SELECT COUNT(*) AS cnt
+    FROM coupons
+    WHERE customer_id = ?
+      AND title = ?
       AND DATE(created_at) = CURDATE()
 ");
-$stmt->bind_param("is", $customerId, $title);
-$stmt->execute();
-$dupCount = (int) $stmt->get_result()->fetch_assoc()['cnt'];
-$stmt->close();
 
-if ($dupCount > 0) {
+foreach (array_keys($validCustomers) as $cid) {
+    $checkStmt->bind_param("is", $cid, $title);
+    $checkStmt->execute();
+    $cnt = (int) $checkStmt->get_result()->fetch_assoc()['cnt'];
+    if ($cnt > 0) $dupCustomerIds[] = $cid;
+}
+$checkStmt->close();
+
+// Duplicate walon ko valid list se hata dein
+foreach ($dupCustomerIds as $cid) {
+    unset($validCustomers[$cid]);
+}
+
+if (empty($validCustomers)) {
     jsonResponse([
         'status'  => 'error',
-        'message' => 'Coupons with the same title ("' . $title . '") were already assigned to this customer today. Please use a different title or try again tomorrow.'
+        'message' => 'All selected customers already received coupons with title "' . $title . '" today. Please use a different title or try again tomorrow.',
+        'duplicate_ids' => $dupCustomerIds,
     ]);
 }
 
 // ═══════════════════════════════════════════════════
-// STEP 5: Insert N coupons (transaction)
+// STEP 5: Insert coupons for each valid customer (transaction)
 // ═══════════════════════════════════════════════════
 $validFrom = date('Y-m-d H:i:s');
 $validTo   = date('Y-m-d H:i:s', strtotime('+365 days'));
@@ -144,48 +195,52 @@ $validTo   = date('Y-m-d H:i:s', strtotime('+365 days'));
 $db->begin_transaction();
 
 try {
-    $stmt = $db->prepare("
-        INSERT INTO coupons 
+    $insertStmt = $db->prepare("
+        INSERT INTO coupons
         (customer_id, title, description, image_url,
          discount_percent, discount_amount, min_purchase,
          valid_from, valid_to, status, created_at, updated_at)
         VALUES (?, ?, ?, NULL, ?, ?, 0.00, ?, ?, 'available', NOW(), NOW())
     ");
 
-    $insertedIds = [];
+    $insertedIds   = [];
+    $assignedCount = 0;
 
-    for ($i = 0; $i < $couponsCount; $i++) {
-        $stmt->bind_param(
-            "issddss",
-            $customerId,
-            $title,
-            $description,
-            $discountPercent,
-            $discountAmount,
-            $validFrom,
-            $validTo
-        );
+    foreach (array_keys($validCustomers) as $cid) {
+        for ($i = 0; $i < $couponsCount; $i++) {
+            $insertStmt->bind_param(
+                "issddss",
+                $cid,
+                $title,
+                $description,
+                $discountPercent,
+                $discountAmount,
+                $validFrom,
+                $validTo
+            );
 
-        if (!$stmt->execute()) {
-            throw new Exception('Coupon insert failed: ' . $stmt->error);
+            if (!$insertStmt->execute()) {
+                throw new Exception('Coupon insert failed for customer ' . $cid . ': ' . $insertStmt->error);
+            }
+            $insertedIds[] = $db->insert_id;
+            $assignedCount++;
         }
-        $insertedIds[] = $db->insert_id;
-    }
-    $stmt->close();
 
-    // Update customer counters
-    $stmt = $db->prepare("
-        UPDATE hascol_customer 
-        SET total_coupons = (SELECT COUNT(*) FROM coupons WHERE customer_id = ?),
-            remaining_coupons = (SELECT COUNT(*) FROM coupons WHERE customer_id = ? AND status = 'available'),
-            used_coupons = (SELECT COUNT(*) FROM coupons WHERE customer_id = ? AND status = 'used')
-        WHERE id = ?
-    ");
-    $stmt->bind_param("iiii", $customerId, $customerId, $customerId, $customerId);
-    if (!$stmt->execute()) {
-        throw new Exception('Customer counters update failed: ' . $stmt->error);
+        // Update counters per customer
+        $counterStmt = $db->prepare("
+            UPDATE hascol_customer
+            SET total_coupons = (SELECT COUNT(*) FROM coupons WHERE customer_id = ?),
+                remaining_coupons = (SELECT COUNT(*) FROM coupons WHERE customer_id = ? AND status = 'available'),
+                used_coupons = (SELECT COUNT(*) FROM coupons WHERE customer_id = ? AND status = 'used')
+            WHERE id = ?
+        ");
+        $counterStmt->bind_param("iiii", $cid, $cid, $cid, $cid);
+        if (!$counterStmt->execute()) {
+            throw new Exception('Customer counters update failed for ' . $cid . ': ' . $counterStmt->error);
+        }
+        $counterStmt->close();
     }
-    $stmt->close();
+    $insertStmt->close();
 
     $db->commit();
 
@@ -194,20 +249,34 @@ try {
     error_log('ASSIGN COUPONS FAILED: ' . $e->getMessage());
     jsonResponse([
         'status'  => 'error',
-        'message' => 'Coupons could not be assigned. Please try again.'
+        'message' => 'Coupons could not be assigned. Please try again.',
     ]);
 }
 
 // ═══════════════════════════════════════════════════
 // STEP 6: Success response
 // ═══════════════════════════════════════════════════
+$assignedCustomerIds = array_keys($validCustomers);
+$assignedNames       = array_map(fn($c) => $c['name'], $validCustomers);
+
+$message = $assignedCount . ' coupon(s) assigned to ' . count($assignedCustomerIds) . ' customer(s).';
+if (!empty($dupCustomerIds)) {
+    $message .= ' Skipped ' . count($dupCustomerIds) . ' customer(s) with duplicate title today.';
+}
+if (!empty($invalidIds)) {
+    $message .= ' Skipped ' . count($invalidIds) . ' invalid/inactive customer(s).';
+}
+
 jsonResponse([
-    'status'         => 'success',
-    'message'        => $couponsCount . ' coupon(s) successfully assigned to ' . $customer['name'],
-    'inserted_count' => $couponsCount,
-    'customer_id'    => $customerId,
-    'customer_name'  => $customer['name'],
-    'coupon_ids'     => $insertedIds,
-    'valid_from'     => $validFrom,
-    'valid_to'       => $validTo,
+    'status'              => 'success',
+    'message'             => $message,
+    'inserted_count'      => $assignedCount,
+    'customer_count'      => count($assignedCustomerIds),
+    'customer_ids'        => $assignedCustomerIds,
+    'customer_names'      => $assignedNames,
+    'coupon_ids'          => $insertedIds,
+    'skipped_duplicates'  => $dupCustomerIds,
+    'skipped_invalid'     => $invalidIds,
+    'valid_from'          => $validFrom,
+    'valid_to'            => $validTo,
 ]);

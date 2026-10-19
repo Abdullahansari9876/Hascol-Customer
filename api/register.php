@@ -1,6 +1,6 @@
 <?php
 /**
- * REGISTER + OTP + IMEI + MOBILE + PASSWORD (HASH + PLAIN) + 3 COUPONS + COUPON_NO + SKIP OTP
+ * REGISTER + OTP + IMEI + MOBILE + PASSWORD (HASH + PLAIN) + DYNAMIC COUPONS + COUPON_NO + SKIP OTP
  * 
  * POST /api/register.php
  * 
@@ -13,7 +13,7 @@
  * 6. Customer INSERT
  * 7. Customer ID lo
  * 8. Referral insert/update
- * 9. Coupons insert
+ * 9. Coupons insert (Dynamic from coupon_templates)
  * 10. skip_otp check
  *
  * REQUIRES (database):
@@ -333,7 +333,7 @@ if ($referralRecordId) {
 }
 
 // ═══════════════════════════════════════════════════
-// ✅ STEP 4: 3 Default Coupons Insert
+// ✅ STEP 4: Default Coupons Insert (SIRF Admin ke coupon_templates se)
 // ═══════════════════════════════════════════════════
 
 $stmt = $db->prepare("SELECT COUNT(*) as cnt FROM coupons WHERE customer_id = ?");
@@ -343,39 +343,39 @@ $couponCount = $stmt->get_result()->fetch_assoc()['cnt'];
 $stmt->close();
 
 if ($couponCount == 0) {
-    // ✅ Har coupon ke saath uska FULL IMAGE URL
-    $defaultCoupons = [
-        [
-            'title' => 'Welcome 15% Off',
-            'desc' => 'Get 15% discount',
-            'image_url' => 'https://hascol.allowance.flamboyant-spence.92-205-119-218.plesk.page/uploads/advertisements/banner1.png',
-            'percent' => 15.00,
-            'amount' => 0.00,
-            'min' => 500.00
-        ],
-        [
-            'title' => 'Welcome 15% Off',
-            'desc' => 'Get 15% discount',
-            'image_url' => 'https://hascol.allowance.flamboyant-spence.92-205-119-218.plesk.page/uploads/advertisements/banner2.png',
-            'percent' => 15.00,
-            'amount' => 0.00,
-            'min' => 1000.00
-        ],
-        [
-            'title' => 'Welcome 15% Off',
-            'desc' => 'Get 15% discount',
-            'image_url' => 'https://hascol.allowance.flamboyant-spence.92-205-119-218.plesk.page/uploads/advertisements/banner3.png',
-            'percent' => 15.00,
-            'amount' => 0.00,
-            'min' => 500.00
-        ],
-    ];
+    // Admin ke active templates fetch karein
+    $defaultCoupons = [];
+    $stmt = $db->prepare("SELECT * FROM coupon_templates WHERE is_active = 1");
+    $stmt->execute();
+    $result = $stmt->get_result();
+    while ($row = $result->fetch_assoc()) {
+        $defaultCoupons[] = $row;
+    }
+    $stmt->close();
 
-    $validFrom = date('Y-m-d H:i:s');
-    $validTo = date('Y-m-d H:i:s', strtotime('+1 year'));
+    // ❌ Koi hardcoded fallback coupon nahi.
+    // Agar admin ne koi active template nahi banaya, to customer ko koi coupon nahi milega.
+    if (empty($defaultCoupons)) {
+        error_log("REGISTER: No active coupon_templates found. customer_id=$customerId");
+    }
+
+    // Validity ka fallback (sirf tab jab template mein date khali ho)
+    // config.php mein COUPON_DEFAULT_VALIDITY_DAYS define kar sakte hain (optional)
+    $fallbackDays = defined('COUPON_DEFAULT_VALIDITY_DAYS') ? (int) COUPON_DEFAULT_VALIDITY_DAYS : 365;
 
     foreach ($defaultCoupons as $c) {
-        // ✅ INSERT query mein image_url column add kiya
+        $validFrom = !empty($c['valid_from']) ? $c['valid_from'] : date('Y-m-d H:i:s');
+        $validTo   = !empty($c['valid_to'])
+            ? $c['valid_to']
+            : date('Y-m-d H:i:s', strtotime("+{$fallbackDays} days"));
+
+        $title           = $c['title'] ?? '';
+        $description     = $c['description'] ?? '';
+        $imageUrl        = $c['image_url'] ?? '';
+        $discountPercent = (float) ($c['discount_percent'] ?? 0);
+        $discountAmount  = (float) ($c['discount_amount'] ?? 0);
+        $minPurchase     = (float) ($c['min_purchase'] ?? 0);
+
         $stmt = $db->prepare("
             INSERT INTO coupons 
             (customer_id, title, description, image_url,
@@ -383,25 +383,15 @@ if ($couponCount == 0) {
              valid_from, valid_to, status) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'available')
         ");
-        // ✅ bind_param types (9 types):
-        // i = customer_id
-        // s = title
-        // s = description
-        // s = image_url
-        // d = discount_percent
-        // d = discount_amount
-        // d = min_purchase
-        // s = valid_from
-        // s = valid_to
         $stmt->bind_param(
             "isssdddss",
             $customerId,
-            $c['title'],
-            $c['desc'],
-            $c['image_url'],
-            $c['percent'],
-            $c['amount'],
-            $c['min'],
+            $title,
+            $description,
+            $imageUrl,
+            $discountPercent,
+            $discountAmount,
+            $minPurchase,
             $validFrom,
             $validTo
         );
@@ -424,10 +414,13 @@ $stmt->bind_param("iiii", $customerId, $customerId, $customerId, $customerId);
 $stmt->execute();
 $stmt->close();
 
+// ✅ FIXED: Safe query to count inserted coupons
 $stmt = $db->prepare("SELECT COUNT(*) as cnt FROM coupons WHERE customer_id = ?");
 $stmt->bind_param("i", $customerId);
 $stmt->execute();
-$insertedCount = (int) $stmt->get_result()->fetch_assoc()['cnt'];
+$result = $stmt->get_result();
+$row = $result->fetch_assoc();
+$insertedCount = $row ? (int) $row['cnt'] : 0;
 $stmt->close();
 
 // ─── Firebase Customer (backup) ───
