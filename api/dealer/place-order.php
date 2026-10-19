@@ -193,16 +193,16 @@ try {
     // ═══════════════════════════════════════════════════
     // 1. Order insert  ✅ station_name ADD KIYA
     // ═══════════════════════════════════════════════════
-    $stmt = $db->prepare("
-        INSERT INTO orders 
-        (order_number, customer_id, dealer_id, player_key, player_id, 
-         subtotal, discount, total_amount, 
-         coupon_id, coupon_code, 
-         status, payment_status, 
-         delivery_type, delivery_address, station_name, notes, 
-         created_at, updated_at) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'successful', 'paid', ?, ?, ?, ?, NOW(), NOW())
-    ");
+  $stmt = $db->prepare("
+    INSERT INTO orders 
+    (order_number, customer_id, dealer_id, player_key, player_id, 
+     subtotal, discount, total_amount, 
+     coupon_id, coupon_code, 
+     status, payment_status, 
+     delivery_type, delivery_address, station_name, notes, 
+     created_at, updated_at) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', 'paid', ?, ?, ?, ?, NOW(), NOW())
+");
     $stmt->bind_param(
         "siissdddisssss",
         $orderNumber,
