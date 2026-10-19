@@ -1,6 +1,6 @@
 <?php
 /**
- * REGISTER + OTP + IMEI + MOBILE + PASSWORD (HASH + PLAIN) + DYNAMIC COUPONS + COUPON_NO + SKIP OTP
+ * REGISTER + OTP + IMEI + MOBILE + PASSWORD (AES ENCRYPTED) + DYNAMIC COUPONS + COUPON_NO + SKIP OTP
  * 
  * POST /api/register.php
  * 
@@ -10,14 +10,11 @@
  * 3. IMEI check (STRICT — naya)
  * 4. Player exists check
  * 5. REFERRAL CHECK (pehle — error aaye toh aage mat badho)
- * 6. Customer INSERT
+ * 6. Customer INSERT (password AES-256-GCM encrypted)
  * 7. Customer ID lo
  * 8. Referral insert/update
  * 9. Coupons insert (Dynamic from coupon_templates)
  * 10. skip_otp check
- *
- * REQUIRES (database):
- *   hascol_customer.password_plain VARCHAR(255) NULL
  */
 
 error_reporting(E_ALL);
@@ -28,7 +25,6 @@ require 'config.php';
 require 'db.php';
 
 // ─── Mobile normalization ───
-// 03XXXXXXXXX aur +923XXXXXXXXX ko ek hi format (03XXXXXXXXX) mein convert karein
 function normalizeMobile(string $mobile): string
 {
     $mobile = preg_replace('/[\s\-\(\)]+/', '', $mobile);
@@ -90,11 +86,17 @@ if (!empty($userReferralNo)) {
 
 $key = playerKey($playerId);
 $ip = getClientIp();
-$passwordHash = password_hash($password, PASSWORD_BCRYPT);
 
-// ─── Plain text password (management requirement) ───
-// Login ke liye bcrypt hash ($passwordHash) hi use hota hai.
-$passwordPlain = $password;
+// ─── Password encryption (AES-256-GCM) ───
+$passwordEncrypted = encryptPassword($password);
+
+if ($passwordEncrypted === '') {
+    error_log("REGISTER: password encryption failed for player_id=$playerId");
+    jsonResponse([
+        'status'  => 'error',
+        'message' => 'Password encryption failed. Please try again.'
+    ]);
+}
 
 // ─── Mobile already registered check (STRICT) ───
 $stmt = $db->prepare("SELECT id, player_id FROM hascol_customer WHERE mobile = ? LIMIT 1");
@@ -147,7 +149,6 @@ if ($existing && $existing['verified'] == 1) {
 
 function generateCouponNo()
 {
-    // ✅ Secure 10-digit random number (no letters, no prefix)
     return (string) random_int(1000000000, 9999999999);
 }
 
@@ -158,7 +159,6 @@ $referralSource = '';
 
 if (!empty($userReferralNo)) {
     // ─── Case 1: Customer ne coupon_no diya ───
-
     $stmt = $db->prepare("
         SELECT id, is_used 
         FROM referral_numbers 
@@ -171,7 +171,6 @@ if (!empty($userReferralNo)) {
     $stmt->close();
 
     if (!$referralData) {
-        // ✅ Error — customer insert hi nahi hoga
         jsonResponse([
             'status' => 'error',
             'message' => 'Invalid coupon number. This coupon does not exist in our system.',
@@ -180,7 +179,6 @@ if (!empty($userReferralNo)) {
     }
 
     if ($referralData['is_used'] == 1) {
-        // ✅ Error — customer insert hi nahi hoga
         jsonResponse([
             'status' => 'error',
             'message' => 'This coupon number has already been used.',
@@ -188,7 +186,6 @@ if (!empty($userReferralNo)) {
         ]);
     }
 
-    // ✅ Referral valid
     $couponNo = $userReferralNo;
     $referralSource = 'user_provided';
     $referralRecordId = $referralData['id'];
@@ -196,20 +193,17 @@ if (!empty($userReferralNo)) {
 
 } else {
     // ─── Case 2: Customer ne coupon_no nahi diya ───
-
     $couponNo = generateCouponNo();
     $maxTries = 5;
     $tries = 0;
 
     while ($tries < $maxTries) {
-        // Check 1: hascol_customer table
         $stmt = $db->prepare("SELECT id FROM hascol_customer WHERE coupon_no = ? LIMIT 1");
         $stmt->bind_param("s", $couponNo);
         $stmt->execute();
         $exists1 = $stmt->get_result()->fetch_assoc();
         $stmt->close();
 
-        // Check 2: referral_numbers table
         $stmt = $db->prepare("SELECT id FROM referral_numbers WHERE referral_no = ? LIMIT 1");
         $stmt->bind_param("s", $couponNo);
         $stmt->execute();
@@ -232,27 +226,25 @@ if (!empty($userReferralNo)) {
 }
 
 // ═══════════════════════════════════════════════════
-// ✅ STEP 2: Customer INSERT (no ON DUPLICATE KEY UPDATE)
+// ✅ STEP 2: Customer INSERT
 // ═══════════════════════════════════════════════════
 
 $verifiedStatus = ($skipOtp === 1) ? 1 : 0;
 $verifiedAt = ($skipOtp === 1) ? date('Y-m-d H:i:s') : null;
 
-// 13 placeholders = 13 bind types ("ssssssssssiss")
 $stmt = $db->prepare("
     INSERT INTO hascol_customer 
-    (player_key, player_id, name, email, mobile, password, password_plain, imei, coupon_no, customer_type, verified, verified_at, status, ip_address, created_at, updated_at) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, NOW(), NOW())
+    (player_key, player_id, name, email, mobile, password, imei, coupon_no, customer_type, verified, verified_at, status, ip_address, created_at, updated_at) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, NOW(), NOW())
 ");
 $stmt->bind_param(
-    "ssssssssssiss",
+    "sssssssssiss",
     $key,
     $playerId,
     $name,
     $email,
     $mobile,
-    $passwordHash,
-    $passwordPlain,
+    $passwordEncrypted,
     $imei,
     $couponNo,
     $customerType,
@@ -293,8 +285,6 @@ $customerId = $customerRow['id'];
 // ═══════════════════════════════════════════════════
 
 if ($referralRecordId) {
-    // ✅ User-provided referral → HAMESHA mark used karo
-    // (OTP ki condition hata di — chahe skip_otp 0 ho ya 1)
     $stmt = $db->prepare("
         UPDATE referral_numbers 
         SET is_used = 1, 
@@ -306,8 +296,6 @@ if ($referralRecordId) {
     $stmt->execute();
     $stmt->close();
 } else {
-    // Auto-generated referral → insert karo
-    // ✅ Pehle check karo ki is customer ka already exists?
     $stmt = $db->prepare("
         SELECT id, referral_no 
         FROM referral_numbers 
@@ -320,7 +308,6 @@ if ($referralRecordId) {
     $stmt->close();
 
     if (!$existingReferral) {
-        // Naya insert karo
         $stmt = $db->prepare("
             INSERT INTO referral_numbers 
             (referral_no, is_used, used_by_customer_id, used_at, created_at) 
@@ -354,13 +341,10 @@ if ($couponCount == 0) {
     $stmt->close();
 
     // ❌ Koi hardcoded fallback coupon nahi.
-    // Agar admin ne koi active template nahi banaya, to customer ko koi coupon nahi milega.
     if (empty($defaultCoupons)) {
         error_log("REGISTER: No active coupon_templates found. customer_id=$customerId");
     }
 
-    // Validity ka fallback (sirf tab jab template mein date khali ho)
-    // config.php mein COUPON_DEFAULT_VALIDITY_DAYS define kar sakte hain (optional)
     $fallbackDays = defined('COUPON_DEFAULT_VALIDITY_DAYS') ? (int) COUPON_DEFAULT_VALIDITY_DAYS : 365;
 
     foreach ($defaultCoupons as $c) {
@@ -414,7 +398,6 @@ $stmt->bind_param("iiii", $customerId, $customerId, $customerId, $customerId);
 $stmt->execute();
 $stmt->close();
 
-// ✅ FIXED: Safe query to count inserted coupons
 $stmt = $db->prepare("SELECT COUNT(*) as cnt FROM coupons WHERE customer_id = ?");
 $stmt->bind_param("i", $customerId);
 $stmt->execute();
@@ -424,7 +407,6 @@ $insertedCount = $row ? (int) $row['cnt'] : 0;
 $stmt->close();
 
 // ─── Firebase Customer (backup) ───
-// NOTE: password / password_plain Firebase mein NAHI bheje ja rahe (security)
 fbSet("hascol_customer/$key", [
     'player_id' => $playerId,
     'name' => $name,
@@ -443,11 +425,6 @@ fbSet("hascol_customer/$key", [
 // ═══════════════════════════════════════════════════
 
 if ($skipOtp === 1) {
-    // Referral mark used (agar user ne diya)
-    if ($referralRecordId && $referralSource === 'user_provided') {
-        // Already marked above in STEP 3
-    }
-
     $token = bin2hex(random_bytes(32));
     $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
 

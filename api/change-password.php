@@ -12,8 +12,8 @@
  *
  * Flow:
  *  1. id (hascol_customer.id) se customer dhoondein (sirf ek)
- *  2. Usi customer ka current_password verify karein
- *  3. Match hone par naya password save karein
+ *  2. Usi customer ka current_password verify karein (AES-256-GCM)
+ *  3. Match hone par naya password AES mein encrypt karke save karein
  *  4. Saare purane sessions inactive kar dein
  */
 
@@ -55,9 +55,7 @@ if (strlen($newPassword) > 50) {
     jsonResponse(['status'=>'error','error_code'=>'PASSWORD_TOO_LONG','message'=>'New password must be less than 50 characters']);
 }
 
-if (!preg_match('/[A-Za-z]/', $newPassword) || !preg_match('/[0-9]/', $newPassword)) {
-    jsonResponse(['status'=>'error','error_code'=>'WEAK_PASSWORD','message'=>'Password must contain at least one letter and one number']);
-}
+// ❌ WEAK PASSWORD VALIDATION (A-Z, 0-9) YAHAN SE HATA DI GAYI HAI
 
 if ($newPassword === $currentPassword) {
     jsonResponse(['status'=>'error','error_code'=>'PASSWORD_SAME_AS_OLD','message'=>'New password must be different from current password']);
@@ -96,8 +94,8 @@ if ($customer['status'] !== 'active') {
     ]);
 }
 
-// ─── Sirf USI customer ka current password verify karo ───
-if (!password_verify($currentPassword, $customer['password'])) {
+// ─── Sirf USI customer ka current password verify karo (AES-256-GCM support) ───
+if (!verifyPassword($currentPassword, $customer['password'])) {
     jsonResponse([
         'status'     => 'error',
         'error_code' => 'INVALID_CURRENT_PASSWORD',
@@ -108,17 +106,26 @@ if (!password_verify($currentPassword, $customer['password'])) {
 $playerId = $customer['player_id'];
 $key      = $customer['player_key'];
 
-$newPasswordHash = password_hash($newPassword, PASSWORD_BCRYPT);
+// ─── Naya Password AES-256-GCM mein Encrypt karo ───
+$newPasswordEncrypted = encryptPassword($newPassword);
 
-// ─── UPDATE: password (hash) + password_plain (plain text) ───
+if ($newPasswordEncrypted === '') {
+    error_log("CHANGE_PASSWORD: encryption failed. id={$customer['id']}");
+    jsonResponse([
+        'status'     => 'error',
+        'error_code' => 'ENCRYPTION_FAILED',
+        'message'    => 'Password encryption failed. Please try again.'
+    ]);
+}
+
+// ─── UPDATE: password (AES Encrypted) ───
 $stmt = $db->prepare("
     UPDATE hascol_customer 
     SET password = ?, 
-        password_plain = ?, 
         updated_at = NOW() 
     WHERE id = ?
 ");
-$stmt->bind_param("ssi", $newPasswordHash, $newPassword, $customer['id']);
+$stmt->bind_param("si", $newPasswordEncrypted, $customer['id']);
 
 if (!$stmt->execute()) {
     error_log("CHANGE_PASSWORD: execute failed. id={$customer['id']}, error=" . $stmt->error);

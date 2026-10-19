@@ -82,7 +82,7 @@ if (!$customer) {
 }
 
 // ─── Naya password purane se alag hona chahiye ───
-if (password_verify($newPassword, $customer['password'])) {
+if (verifyPassword($newPassword, $customer['password'])) {
     jsonResponse([
         'status'     => 'error',
         'error_code' => 'PASSWORD_SAME_AS_OLD',
@@ -93,17 +93,17 @@ if (password_verify($newPassword, $customer['password'])) {
 $playerId = $customer['player_id'];
 $key      = $customer['player_key'];
 
-$newPasswordHash = password_hash($newPassword, PASSWORD_BCRYPT);
+// ✅ AES-256-GCM Encryption use karo
+$newPasswordEncrypted = encryptPassword($newPassword);
 
-// ─── UPDATE: password (hash) + password_plain (plain text) ───
+// ─── UPDATE: password (AES encrypted) ───
 $stmt = $db->prepare("
     UPDATE hascol_customer 
     SET password = ?, 
-        password_plain = ?, 
         updated_at = NOW() 
     WHERE mobile = ?
 ");
-$stmt->bind_param("sss", $newPasswordHash, $newPassword, $mobile);
+$stmt->bind_param("ss", $newPasswordEncrypted, $mobile);
 
 if (!$stmt->execute()) {
     error_log("FORGOT_PASSWORD: execute failed. mobile=$mobile, error=" . $stmt->error);

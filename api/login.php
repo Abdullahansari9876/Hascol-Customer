@@ -62,7 +62,8 @@ if (!$customer) {
     ]);
 }
 
-if (!password_verify($password, $customer['password'])) {
+// Use verifyPassword() to support AES-256-GCM encrypted passwords
+if (!verifyPassword($password, $customer['password'])) {
     jsonResponse([
         'status'     => 'error',
         'error_code' => 'INVALID_PASSWORD',

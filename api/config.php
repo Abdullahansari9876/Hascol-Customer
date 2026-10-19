@@ -14,9 +14,7 @@ define('OTP_MAX_ATTEMPTS', 5);
 
 // ============================================
 // PASSWORD ENCRYPTION KEY (AES-256-GCM)
-// ⚠️ Is key ko kisi ke saath share na karein aur Git mein commit na karein.
-// ⚠️ Key badalne par pehle se save kiye hue password_enc decode nahi honge.
-// ⚠️ Key ka alag jagah backup zaroor rakhein.
+// ⚠️ Key badalne par pehle se save kiye hue passwords decode nahi honge.
 // ============================================
 define('PASSWORD_ENC_KEY', '9b79441fe979752861f8ba0f4d9f6d2868d5f4b279c6df23db4e3749bafb039a');
 
@@ -92,34 +90,79 @@ function playerKey($playerId) {
 
 // ============================================
 // PASSWORD ENCRYPT / DECRYPT (AES-256-GCM)
-// register.php, change/reset password aur admin panel mein use hote hain
+// register.php, login.php, change/reset password 
+// aur admin panel mein use hote hain
 // ============================================
+
+/**
+ * Encrypt plaintext password using AES-256-GCM
+ * 
+ * @param string $plain  Plaintext password
+ * @return string        Base64-encoded string: IV(12) + TAG(16) + CIPHERTEXT
+ *                       Empty string on failure
+ */
 function encryptPassword(string $plain): string {
     $key = hex2bin(PASSWORD_ENC_KEY);
     if ($key === false || strlen($key) !== 32) {
+        error_log('encryptPassword: invalid key');
         return '';
     }
-    $iv  = random_bytes(12);
+    
+    try {
+        $iv  = random_bytes(12);
+    } catch (Exception $e) {
+        error_log('encryptPassword: random_bytes failed');
+        return '';
+    }
+    
     $tag = '';
     $cipher = openssl_encrypt($plain, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag);
     if ($cipher === false) {
+        error_log('encryptPassword: openssl_encrypt failed');
         return '';
     }
+    
+    // Format: IV (12) + TAG (16) + CIPHERTEXT
     return base64_encode($iv . $tag . $cipher);
 }
 
+/**
+ * Decrypt AES-256-GCM encrypted password
+ * 
+ * @param string $stored  Base64-encoded encrypted string
+ * @return string|null    Decrypted plaintext, or null on failure
+ */
 function decryptPassword(string $stored): ?string {
+    if ($stored === '') return null;
+    
     $raw = base64_decode($stored, true);
-    if ($raw === false || strlen($raw) < 29) {
+    if ($raw === false || strlen($raw) < 29) { // 12 (IV) + 16 (TAG) + 1 (min ciphertext)
         return null;
     }
+    
     $key = hex2bin(PASSWORD_ENC_KEY);
     if ($key === false || strlen($key) !== 32) {
+        error_log('decryptPassword: invalid key');
         return null;
     }
+    
     $iv     = substr($raw, 0, 12);
     $tag    = substr($raw, 12, 16);
     $cipher = substr($raw, 28);
-    $plain  = openssl_decrypt($cipher, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag);
+    
+    $plain = openssl_decrypt($cipher, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag);
     return $plain === false ? null : $plain;
+}
+
+/**
+ * Verify a plaintext password against an encrypted stored password
+ * 
+ * @param string $input   Plaintext input from login form
+ * @param string $stored  Encrypted stored password from DB
+ * @return bool           true if match
+ */
+function verifyPassword(string $input, string $stored): bool {
+    $decrypted = decryptPassword($stored);
+    if ($decrypted === null) return false;
+    return hash_equals($decrypted, $input);
 }
