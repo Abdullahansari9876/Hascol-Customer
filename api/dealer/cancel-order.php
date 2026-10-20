@@ -78,9 +78,7 @@ if (!$customer) {
 $db->begin_transaction();
 
 try {
-    // ═══════════════════════════════════════════════════
     // 1. ORDER LOCK + FETCH
-    // ═══════════════════════════════════════════════════
     if ($orderId > 0) {
         $stmt = $db->prepare("
             SELECT *
@@ -117,8 +115,8 @@ try {
     $couponCode = $order['coupon_code'];
 
     // Already cancelled?
-    if ($order['status'] === 'cancelled') {
-        throw new Exception('This order is already cancelled');
+    if ($order['status'] === 'cancelled' || $order['status'] === 'reverted') {
+        throw new Exception('This order has already been reverted/cancelled');
     }
 
     // Only these statuses can be cancelled
@@ -129,9 +127,7 @@ try {
         throw new Exception("Order cannot be cancelled (status: {$displayStatus})");
     }
 
-    // ═══════════════════════════════════════════════════
     // 2. ITEMS NIKALO + PRODUCT NAMES CAPTURE
-    // ═══════════════════════════════════════════════════
     $stmt = $db->prepare("
         SELECT id, product_id, product_name, quantity
         FROM order_items
@@ -155,9 +151,7 @@ try {
 
     $productNamesString = implode(', ', $productNames);
 
-    // ═══════════════════════════════════════════════════
     // 3. STOCK WAPAS ADD
-    // ═══════════════════════════════════════════════════
     foreach ($orderItems as $oi) {
         $stmt = $db->prepare("
             UPDATE lube_products
@@ -174,17 +168,13 @@ try {
         $stmt->close();
     }
 
-    // ═══════════════════════════════════════════════════
     // 4. ORDER ITEMS DELETE
-    // ═══════════════════════════════════════════════════
     $stmt = $db->prepare("DELETE FROM order_items WHERE order_id = ?");
     $stmt->bind_param("i", $orderId);
     $stmt->execute();
     $stmt->close();
 
-    // ═══════════════════════════════════════════════════
     // 5. COUPON UN-USE
-    // ═══════════════════════════════════════════════════
     $couponReverted = false;
 
     if ($couponId > 0) {
@@ -237,12 +227,10 @@ try {
         }
     }
 
-    // ═══════════════════════════════════════════════════
     // 6. ORDER STATUS -> CANCELLED + REFUNDED
-    // ═══════════════════════════════════════════════════
     $stmt = $db->prepare("
         UPDATE orders
-        SET status = 'cancelled',
+        SET status = 'reverted',
             payment_status = 'refunded',
             updated_at = NOW()
         WHERE id = ?
@@ -251,9 +239,7 @@ try {
     $stmt->execute();
     $stmt->close();
 
-    // ═══════════════════════════════════════════════════
     // 7. TRANSACTION REVERSAL (FIXED)
-    // ═══════════════════════════════════════════════════
     $stmt = $db->prepare("
         UPDATE transactions
         SET status = 'failed', updated_at = NOW()
@@ -303,9 +289,7 @@ try {
     $stmt->execute();
     $stmt->close();
 
-    // ═══════════════════════════════════════════════════
     // 8. COMMIT — sab kuch permanent
-    // ═══════════════════════════════════════════════════
     $db->commit();
 
     // Fresh customer counters (accurate response)
@@ -321,7 +305,7 @@ try {
         'data' => [
             'order_id' => $orderId,
             'order_number' => $orderNumber,
-            'order_status' => 'cancelled',
+            'order_status' => 'reverted',
             'payment_status' => 'refunded',
             'coupon_id' => $couponId ?: null,
             'coupon_code' => $couponCode ?: null,
