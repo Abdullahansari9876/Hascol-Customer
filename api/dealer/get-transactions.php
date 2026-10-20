@@ -44,11 +44,11 @@ if (!$dealer) {
     jsonResponse(['status' => 'error', 'message' => 'Dealer not found or inactive']);
 }
 
-// Transactions
+// Transactions  ✅ order_id SELECT me add kiya
 if ($status !== 'all') {
     $stmt = $db->prepare("
         SELECT 
-            id, customer_id, customer_name, dealer_id,
+            id, order_id, customer_id, customer_name, dealer_id,
             player_key, player_id, station_name, product_name,
             amount, discount, final_amount,
             coupon_code, status, transaction_ref,
@@ -61,7 +61,7 @@ if ($status !== 'all') {
 } else {
     $stmt = $db->prepare("
         SELECT 
-            id, customer_id, customer_name, dealer_id,
+            id, order_id, customer_id, customer_name, dealer_id,
             player_key, player_id, station_name, product_name,
             amount, discount, final_amount,
             coupon_code, status, transaction_ref,
@@ -88,6 +88,7 @@ while ($row = $result->fetch_assoc()) {
 
     $transactions[] = [
         'id'              => (int)$row['id'],
+        'order_id'        => $row['order_id'] !== null ? (int)$row['order_id'] : null, // ✅ NEW
         'customer_id'     => (int)$row['customer_id'],
         'customer_name'   => $row['customer_name'] ?? 'N/A',
         'dealer_id'       => (int)$row['dealer_id'],

@@ -103,6 +103,21 @@ try {
     $stmt->close();
 
     if (!$order) {
+        // Debug log (server log only, client ko sensitive info nahi jati)
+        if ($orderId > 0) {
+            $chk = $db->prepare("SELECT id, customer_id, dealer_id FROM orders WHERE id = ? LIMIT 1");
+            $chk->bind_param("i", $orderId);
+            $chk->execute();
+            $found = $chk->get_result()->fetch_assoc();
+            $chk->close();
+
+            if ($found) {
+                error_log("Cancel mismatch: sent customer={$customerId}, dealer={$dealerId}, "
+                    . "actual customer={$found['customer_id']}, dealer={$found['dealer_id']}");
+            } else {
+                error_log("Cancel: order id {$orderId} does not exist");
+            }
+        }
         throw new Exception('Order not found for this customer / dealer');
     }
 
@@ -239,49 +254,65 @@ try {
     $stmt->execute();
     $stmt->close();
 
-    // 7. TRANSACTION REVERSAL (FIXED)
+    // 7. TRANSACTION REVERSAL  ✅ ab order_id se match hota hai
     $stmt = $db->prepare("
         UPDATE transactions
         SET status = 'failed', updated_at = NOW()
-        WHERE customer_id = ?
-          AND dealer_id = ?
-          AND coupon_id = ?
-          AND ABS(TIMESTAMPDIFF(SECOND, created_at, ?)) < 120
-        ORDER BY id DESC
-        LIMIT 1
+        WHERE order_id = ?
+          AND amount >= 0
     ");
-    $stmt->bind_param("iiis", $customerId, $dealerId, $couponId, $order['created_at']);
+    $stmt->bind_param("i", $orderId);
     $stmt->execute();
+    $txnUpdated = $stmt->affected_rows;
     $stmt->close();
+
+    // Purane records (jin me order_id NULL hai) ke liye fallback
+    if ($txnUpdated === 0) {
+        $stmt = $db->prepare("
+            UPDATE transactions
+            SET status = 'failed', updated_at = NOW()
+            WHERE order_id IS NULL
+              AND customer_id = ?
+              AND dealer_id = ?
+              AND coupon_id = ?
+              AND ABS(TIMESTAMPDIFF(SECOND, created_at, ?)) < 120
+            ORDER BY id DESC
+            LIMIT 1
+        ");
+        $stmt->bind_param("iiis", $customerId, $dealerId, $couponId, $order['created_at']);
+        $stmt->execute();
+        $stmt->close();
+    }
 
     // Reversal audit entry (negative amounts)
     $reversalRef = 'REV' . strtoupper(substr(md5(uniqid()), 0, 10));
     $reversalProductName = 'REVERSAL: ' . $productNamesString . ' | Reason: ' . $reason;
 
-    // 👇 FIX: Negative amounts ko pehle variables mein store kiya (Bind param error solve)
+    // Negative amounts ko pehle variables mein store kiya (bind_param by reference)
     $negSubtotal = -$subtotal;
     $negDiscount = -$discount;
     $negTotalAmount = -$totalAmount;
 
     $stmt = $db->prepare("
         INSERT INTO transactions
-        (customer_id, customer_name, dealer_id, player_key, player_id, station_name, product_name,
+        (customer_id, order_id, customer_name, dealer_id, player_key, player_id, station_name, product_name,
          amount, discount, final_amount,
          coupon_id, coupon_code, status, transaction_ref, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'failed', ?, NOW())
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'failed', ?, NOW())
     ");
     $stmt->bind_param(
-        "isissssdddiss",
+        "iisissssdddiss",
         $customerId,
+        $orderId,
         $customer['name'],
         $dealerId,
         $customer['player_key'],
         $customer['player_id'],
         $stationName,
         $reversalProductName,
-        $negSubtotal,       // 👈 Updated variable
-        $negDiscount,       // 👈 Updated variable
-        $negTotalAmount,    // 👈 Updated variable
+        $negSubtotal,
+        $negDiscount,
+        $negTotalAmount,
         $couponId,
         $couponCode,
         $reversalRef

@@ -304,7 +304,7 @@ try {
         $stmt->close();
     }
 
-    // 5. Transaction insert
+    // 5. Transaction insert  ✅ order_id ADD KIYA
     $transactionRef = 'TXN' . strtoupper(substr(md5(uniqid()), 0, 10));
     $customerName = $customer['name'] ?? 'N/A';
 
@@ -314,14 +314,15 @@ try {
 
     $stmt = $db->prepare("
         INSERT INTO transactions 
-        (customer_id, customer_name, dealer_id, player_key, player_id, station_name, product_name,
+        (customer_id, order_id, customer_name, dealer_id, player_key, player_id, station_name, product_name,
          amount, discount, final_amount, 
          coupon_id, coupon_code, status, transaction_ref, created_at) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'successful', ?, NOW())
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'successful', ?, NOW())
     ");
     $stmt->bind_param(
-        "isissssdddiss",
+        "iisissssdddiss",
         $customerId,
+        $orderId,
         $customerName,
         $dealerId,
         $key,
