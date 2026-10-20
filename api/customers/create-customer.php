@@ -14,6 +14,32 @@ ini_set('display_errors', 1);
 require '../config.php';
 require '../db.php';
 
+// ═══════════════════════════════════════════
+// PASSWORD ENCRYPTION (AES-256-GCM)
+// Format: base64( IV[12] + TAG[16] + CIPHER )
+// Unique naam, taake config.php ke functions se conflict na ho
+// ═══════════════════════════════════════════
+if (!defined('PASSWORD_ENC_KEY')) {
+    define('PASSWORD_ENC_KEY', '9b79441fe979752861f8ba0f4d9f6d2868d5f4b279c6df23db4e3749bafb039a');
+}
+
+function cpEncryptPassword(string $plain): ?string {
+    $key = hex2bin(PASSWORD_ENC_KEY);
+    if ($key === false || strlen($key) !== 32) {
+        return null;
+    }
+
+    $iv  = random_bytes(12);
+    $tag = '';
+
+    $cipher = openssl_encrypt($plain, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag, '', 16);
+    if ($cipher === false || strlen($tag) !== 16) {
+        return null;
+    }
+
+    return base64_encode($iv . $tag . $cipher);
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     jsonResponse(['status' => 'error', 'message' => 'Only POST method allowed']);
     exit;
@@ -118,7 +144,13 @@ if (!empty($email)) {
     $stmt->close();
 }
 
-$hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+// ✅ AES-256-GCM encryption (pehle yahan password_hash() tha)
+$hashedPassword = cpEncryptPassword($password);
+if ($hashedPassword === null) {
+    jsonResponse(['status' => 'error', 'message' => 'Password encryption failed']);
+    exit;
+}
+
 $verifiedAt = $verified ? date('Y-m-d H:i:s') : null;
 
 // ═══════════════════════════════════════════
