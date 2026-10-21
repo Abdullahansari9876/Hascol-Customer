@@ -15,6 +15,8 @@
  * 8. Referral insert/update
  * 9. Coupons insert (Dynamic from coupon_templates)
  * 10. skip_otp check
+ *
+ * UPDATED: company_name (OPTIONAL) support added.
  */
 
 error_reporting(E_ALL);
@@ -42,6 +44,7 @@ $input = getInput();
 $name = trim($input['name'] ?? '');
 $playerId = trim($input['player_id'] ?? '');
 $email = trim($input['email'] ?? '');
+$companyName = trim($input['company_name'] ?? '');   // ✅ NEW — OPTIONAL
 $imei = trim($input['imei'] ?? '');
 $mobile = normalizeMobile(trim($input['mobile'] ?? ''));
 $password = trim($input['password'] ?? '');
@@ -73,6 +76,14 @@ if (strlen($password) < 6) {
 if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
     jsonResponse(['status' => 'error', 'message' => 'Invalid email format']);
 }
+
+// ✅ company_name — OPTIONAL. Sirf length safety check (agar bheja gaya ho).
+if ($companyName !== '' && strlen($companyName) > 150) {
+    jsonResponse(['status' => 'error', 'message' => 'Company name too long (max 150 chars)']);
+}
+
+// ✅ Empty string ko NULL mein convert karein (DB ke liye cleaner)
+$companyNameDb = ($companyName === '') ? null : $companyName;
 
 // ─── referral_no validation (agar diya gaya) ───
 if (!empty($userReferralNo)) {
@@ -126,6 +137,23 @@ if ($imeiExists && $imeiExists['player_id'] !== $playerId) {
         'error_code' => 'IMEI_ALREADY_REGISTERED',
         'message'    => 'This device is already registered with another account.'
     ]);
+}
+
+// ─── Email already registered check (STRICT) ───
+if (!empty($email)) {
+    $stmt = $db->prepare("SELECT id, player_id FROM hascol_customer WHERE email = ? LIMIT 1");
+    $stmt->bind_param("s", $email);
+    $stmt->execute();
+    $emailExists = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    if ($emailExists) {
+        jsonResponse([
+            'status'     => 'error',
+            'error_code' => 'EMAIL_ALREADY_REGISTERED',
+            'message'    => 'This email is already registered with another account.'
+        ]);
+    }
 }
 
 // ─── Player already registered check ───
@@ -234,15 +262,16 @@ $verifiedAt = ($skipOtp === 1) ? date('Y-m-d H:i:s') : null;
 
 $stmt = $db->prepare("
     INSERT INTO hascol_customer 
-    (player_key, player_id, name, email, mobile, password, imei, coupon_no, customer_type, verified, verified_at, status, ip_address, created_at, updated_at) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, NOW(), NOW())
+    (player_key, player_id, name, email, company_name, mobile, password, imei, coupon_no, customer_type, verified, verified_at, status, ip_address, created_at, updated_at) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, NOW(), NOW())
 ");
 $stmt->bind_param(
-    "sssssssssiss",
+    "ssssssssssiss",
     $key,
     $playerId,
     $name,
     $email,
+    $companyNameDb,
     $mobile,
     $passwordEncrypted,
     $imei,
@@ -411,6 +440,7 @@ fbSet("hascol_customer/$key", [
     'player_id' => $playerId,
     'name' => $name,
     'email' => $email,
+    'company_name' => $companyName,   // ✅ NEW (optional)
     'mobile' => $mobile,
     'imei' => $imei,
     'coupon_no' => $couponNo,
@@ -450,6 +480,8 @@ if ($skipOtp === 1) {
         'player_id' => $playerId,
         'mobile' => $mobile,
         'imei' => $imei,
+        'email' => $email,               // ✅ NEW
+        'company_name' => $companyName,  // ✅ NEW (empty '' agar nahi bheja)
         'coupon_no' => $couponNo,
         'referral_source' => $referralSource,
         'customer_type' => $customerType,
@@ -518,6 +550,8 @@ jsonResponse([
     'player_id' => $playerId,
     'mobile' => $mobile,
     'imei' => $imei,
+    'email' => $email,               // ✅ NEW
+    'company_name' => $companyName,  // ✅ NEW (empty '' agar nahi bheja)
     'coupon_no' => $couponNo,
     'referral_source' => $referralSource,
     'customer_type' => $customerType,
