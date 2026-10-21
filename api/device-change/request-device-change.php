@@ -1,6 +1,5 @@
 <?php
-// request-device-change.php — Step 1: Credentials verify + OTP bhejo
-// Request abhi insert NAHI hoti. OTP verify hone ke baad insert hogi.
+// request-device-change.php — Step 1: Credentials verify (Email + Password) + OTP bhejo
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit(0); }
 header("Content-Type: application/json; charset=utf-8");
@@ -17,72 +16,49 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
-function normalizeMobile($m) {
-    $m = preg_replace('/[\s\-]/', '', (string)$m);
-    if (strpos($m, '+92') === 0) $m = '0' . substr($m, 3);
-    return $m;
-}
-
 $input    = getInput();
-$mobile   = trim($input['mobile'] ?? $input['old_mobile'] ?? '');
+$email    = trim($input['email'] ?? '');
 $password = (string)($input['password'] ?? '');
 $newImei  = trim($input['new_imei'] ?? $input['imei'] ?? '');
 $reason   = trim($input['reason'] ?? '');
 
 // ─── Validation ───
-if ($mobile === '')   jsonResponse(['status'=>'error','message'=>'Mobile number required']);
-if ($password === '') jsonResponse(['status'=>'error','message'=>'Password required']);
-if ($newImei === '')  jsonResponse(['status'=>'error','message'=>'New device ID required']);
-if (strlen($newImei) > 50) jsonResponse(['status'=>'error','message'=>'Invalid device id']);
+if ($email === '')    jsonResponse(['status'=>'error','message'=>'Email is required']);
+if ($password === '') jsonResponse(['status'=>'error','message'=>'Password is required']);
+if ($newImei === '')  jsonResponse(['status'=>'error','message'=>'New device ID is required']);
+if (strlen($newImei) > 50) jsonResponse(['status'=>'error','message'=>'Invalid device ID']);
 
-if (!preg_match('/^(03[0-9]{9}|\+923[0-9]{9})$/', $mobile)) {
-    jsonResponse(['status'=>'error','message'=>'Invalid mobile number format.']);
+if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    jsonResponse(['status'=>'error','message'=>'Invalid email format.']);
 }
 if ($reason !== '' && strlen($reason) < 5) jsonResponse(['status'=>'error','message'=>'Reason must be at least 5 characters']);
 if (strlen($reason) > 255) jsonResponse(['status'=>'error','message'=>'Reason too long (max 255)']);
 if ($reason === '') $reason = 'Not provided';
 
 try {
-    $mobileNorm = normalizeMobile($mobile);
-
-    // ─── Duplicate mobile check (1 mobile = 1 customer) ───
+    // ─── Customer dhoondein Email se ───
     $stmt = $db->prepare("
-        SELECT COUNT(*) AS c
+        SELECT id, email, password, verified, status, imei, name
         FROM hascol_customer
-        WHERE REPLACE(REPLACE(REPLACE(mobile, ' ', ''), '-', ''), '+92', '0') = ?
-    ");
-    $stmt->bind_param("s", $mobileNorm);
-    $stmt->execute();
-    $dupCount = (int)$stmt->get_result()->fetch_assoc()['c'];
-    $stmt->close();
-
-    if ($dupCount > 1) {
-        jsonResponse([
-            'status'     => 'error',
-            'error_code' => 'DUPLICATE_MOBILE',
-            'message'    => 'This mobile number is registered with multiple accounts. Please contact support.',
-        ]);
-    }
-
-    // ─── Customer dhoondein ───
-    $stmt = $db->prepare("
-        SELECT id, mobile, password, email, verified, status, imei, name
-        FROM hascol_customer
-        WHERE REPLACE(REPLACE(REPLACE(mobile, ' ', ''), '-', ''), '+92', '0') = ?
+        WHERE email = ?
         LIMIT 1
     ");
-    $stmt->bind_param("s", $mobileNorm);
+    $stmt->bind_param("s", $email);
     $stmt->execute();
     $customer = $stmt->get_result()->fetch_assoc();
     $stmt->close();
 
     if (!$customer) {
-        jsonResponse(['status' => 'error', 'error_code' => 'INVALID_CREDENTIALS', 'message' => 'Invalid mobile number or password.']);
+        jsonResponse([
+            'status'     => 'error', 
+            'error_code' => 'EMAIL_NOT_FOUND', 
+            'message'    => 'This email address is not registered in our system. Please check the email or contact support.'
+        ]);
     }
 
     // ─── Password verify ───
     if (empty($customer['password']) || !verifyPassword($password, $customer['password'])) {
-        jsonResponse(['status' => 'error', 'error_code' => 'INVALID_CREDENTIALS', 'message' => 'Invalid mobile number or password.']);
+        jsonResponse(['status' => 'error', 'error_code' => 'INVALID_CREDENTIALS', 'message' => 'Invalid email or password.']);
     }
 
     if ($customer['verified'] != 1)       jsonResponse(['status'=>'error','message'=>'Account is not verified.']);
@@ -98,6 +74,20 @@ try {
     if (hash_equals($storedImei, $newImei)) {
         jsonResponse(['status'=>'error','message'=>'This device is already registered to your account. Please login directly.']);
     }
+
+    // Check if NEW IMEI is already used by ANOTHER customer
+    $stmt = $db->prepare("SELECT id FROM hascol_customer WHERE imei = ? AND id <> ? LIMIT 1");
+    $stmt->bind_param("si", $newImei, $customer['id']);
+    $stmt->execute();
+    if ($stmt->get_result()->fetch_assoc()) {
+        $stmt->close();
+        jsonResponse([
+            'status'     => 'error',
+            'error_code' => 'IMEI_ALREADY_REGISTERED',
+            'message'    => 'This new device is already registered with another customer account. Request cannot be submitted.',
+        ]);
+    }
+    $stmt->close();
 
     // 🛡️ CHECK: Recent request check (Pichle 24 ghante mein koi request pending ya approved hai?)
     $stmt = $db->prepare("
@@ -119,30 +109,6 @@ try {
     }
     $stmt->close();
 
-    // Check if NEW IMEI is already used by ANOTHER customer
-    $stmt = $db->prepare("SELECT id FROM hascol_customer WHERE imei = ? AND id <> ? LIMIT 1");
-    $stmt->bind_param("si", $newImei, $customer['id']);
-    $stmt->execute();
-    if ($stmt->get_result()->fetch_assoc()) {
-        $stmt->close();
-        jsonResponse([
-            'status'     => 'error',
-            'error_code' => 'IMEI_ALREADY_REGISTERED',
-            'message'    => 'This new device is already registered with another customer account. Request cannot be submitted.',
-        ]);
-    }
-    $stmt->close();
-
-    // ─── EMAIL CHECK ───
-    $customerEmail = trim((string)($customer['email'] ?? ''));
-    if ($customerEmail === '') {
-        jsonResponse([
-            'status'     => 'error',
-            'error_code' => 'EMAIL_MISSING',
-            'message'    => 'No email is registered on your account. An email is required for device change requests. Please contact support to add your email.',
-        ]);
-    }
-
     // ─── Rate limit: 24 ghante mein max 3 requests ───
     $stmt = $db->prepare("SELECT COUNT(*) AS c FROM hascol_device_change_requests WHERE customer_id = ? AND created_at > (NOW() - INTERVAL 1 DAY)");
     $stmt->bind_param("i", $customer['id']);
@@ -155,7 +121,6 @@ try {
 
     // ─── OTP generate karein ───
     $otp     = (string) random_int(100000, 999999);
-    // $otpHash = password_hash($otp, PASSWORD_DEFAULT); // <--- HASHING REMOVED
     $expires = date('Y-m-d H:i:s', time() + OTP_EXPIRY);  
     $ip      = $_SERVER['REMOTE_ADDR'] ?? null;
 
@@ -177,7 +142,7 @@ try {
     $ins->close();
 
     // ─── Email bhejein ───
-    $sent = sendOtpEmail($customerEmail, $customer['name'] ?? 'Customer', $otp);
+    $sent = sendOtpEmail($customer['email'], $customer['name'] ?? 'Customer', $otp);
 
     if (!$sent) {
         // Rollback OTP row
@@ -192,7 +157,7 @@ try {
         'status'       => 'success',
         'message'      => 'OTP has been sent to your registered email. Please verify within 10 minutes.',
         'otp_id'       => (int)$otpId,
-        'email_masked' => maskEmail($customerEmail),
+        'email_masked' => maskEmail($customer['email']),
     ]);
 
 } catch (Throwable $e) {
