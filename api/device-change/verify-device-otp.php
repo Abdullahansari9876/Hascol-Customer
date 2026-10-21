@@ -1,5 +1,6 @@
 <?php
-// verify-device-otp.php — Step 2: OTP verify + request INSERT + IMEI UPDATE
+// verify-device-otp.php — Step 2: OTP verify + Direct IMEI UPDATE
+// Records are NOT deleted from OTP table, and NO request is inserted.
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit(0); }
 header("Content-Type: application/json; charset=utf-8");
@@ -26,7 +27,7 @@ if (!preg_match('/^\d{6}$/', $otpIn)) jsonResponse(['status'=>'error','message'=
 try {
     $db->begin_transaction();
 
-    // ─── OTP row lock karein ───
+    // 1. OTP row lock karein
     $stmt = $db->prepare("SELECT * FROM hascol_device_change_otps WHERE id = ? FOR UPDATE");
     $stmt->bind_param("i", $otpId);
     $stmt->execute();
@@ -50,8 +51,8 @@ try {
         jsonResponse(['status'=>'error','error_code'=>'OTP_LOCKED','message'=>'Too many incorrect attempts. Please request a new OTP.']);
     }
 
-    // ─── OTP verify ───
-    if (!password_verify($otpIn, $row['otp_hash'])) {
+    // 2. OTP verify (Direct comparison as requested)
+    if ($otpIn !== $row['otp_hash']) {
         $upd = $db->prepare("UPDATE hascol_device_change_otps SET attempts = attempts + 1 WHERE id = ?");
         $upd->bind_param("i", $otpId);
         $upd->execute();
@@ -60,14 +61,11 @@ try {
         jsonResponse(['status'=>'error','error_code'=>'OTP_INVALID','message'=>'Invalid OTP.']);
     }
 
-    // ═══════════════════════════════════════════════════
-    // OTP SAHI — AB ASLI KAAM:
-    // ═══════════════════════════════════════════════════
-
+    // OTP SAHI — Ab aage ka process
     $customerId = (int)$row['customer_id'];
     $newImei    = $row['new_imei'];
 
-    // Customer details fetch karein
+    // 3. Customer details fetch karein
     $stmt = $db->prepare("SELECT id, player_id, imei, status, verified FROM hascol_customer WHERE id = ? LIMIT 1");
     $stmt->bind_param("i", $customerId);
     $stmt->execute();
@@ -83,17 +81,18 @@ try {
         jsonResponse(['status'=>'error','message'=>'Account is not active.']);
     }
 
+    // 4. IMEI Checks (Update se pehle)
     $storedImei = trim((string)($customer['imei'] ?? ''));
     if ($storedImei === '') {
         $db->rollback();
-        jsonResponse(['status'=>'error','message'=>'No device registered.']);
+        jsonResponse(['status'=>'error','message'=>'No device currently registered on this account.']);
     }
     if (hash_equals($storedImei, $newImei)) {
         $db->rollback();
-        jsonResponse(['status'=>'error','message'=>'This device is already registered.']);
+        jsonResponse(['status'=>'error','message'=>'This device is already registered to your account.']);
     }
 
-    // Naya IMEI kisi aur ke paas toh nahi?
+    // 🛡️ IMPORTANT: Check if the NEW IMEI is already used by ANOTHER customer
     $stmt = $db->prepare("SELECT id FROM hascol_customer WHERE imei = ? AND id <> ? LIMIT 1");
     $stmt->bind_param("si", $newImei, $customerId);
     $stmt->execute();
@@ -103,44 +102,24 @@ try {
         jsonResponse([
             'status'     => 'error',
             'error_code' => 'IMEI_ALREADY_REGISTERED',
-            'message'    => 'This device is already registered with another customer account.',
+            'message'    => 'This new device is already registered with another customer account. Cannot update IMEI.',
         ]);
     }
     $stmt->close();
 
-    // Pending request duplicate check
-    $stmt = $db->prepare("SELECT id FROM hascol_device_change_requests WHERE customer_id = ? AND status = 'pending' LIMIT 1");
-    $stmt->bind_param("i", $customerId);
+    // 5. Update OTP table (verified_at set karein, DELETE NAHI KARNA HAI)
+    $stmt = $db->prepare("UPDATE hascol_device_change_otps SET verified_at = NOW() WHERE id = ?");
+    $stmt->bind_param("i", $otpId);
     $stmt->execute();
-    if ($stmt->get_result()->fetch_assoc()) {
-        $stmt->close();
-        $db->rollback();
-        jsonResponse(['status'=>'error','message'=>'You already have a pending request.']);
-    }
     $stmt->close();
 
-    // Reason variable set karein (agar database mein reason column hai toh wo use hoga, warna default)
-    $reason = !empty($row['reason']) ? $row['reason'] : 'Device change verified via OTP';
-    $contact = $customer['player_id'] ?? ''; 
-
-    // ─── 1. Request INSERT ───
-    $stmt = $db->prepare("
-        INSERT INTO hascol_device_change_requests
-        (customer_id, old_imei, new_imei, reason, contact, status, created_at)
-        VALUES (?, ?, ?, ?, ?, 'pending', NOW())
-    ");
-    $stmt->bind_param("issss", $customerId, $storedImei, $newImei, $reason, $contact);
-    $stmt->execute();
-    $requestId = $stmt->insert_id; // <-- Yeh line add ki gayi hai
-    $stmt->close();
-
-    // ─── 2. IMEI UPDATE (customer ka naya device register) ───
+    // 6. IMEI UPDATE in hascol_customer
     $stmt = $db->prepare("UPDATE hascol_customer SET imei = ? WHERE id = ?");
     $stmt->bind_param("si", $newImei, $customerId);
     $stmt->execute();
     $stmt->close();
 
-    // ─── 3. Purane sessions band ───
+    // 7. Purane sessions band
     if (!empty($customer['player_id'])) {
         $stmt = $db->prepare("UPDATE sessions SET is_active = 0 WHERE player_id = ?");
         $stmt->bind_param("s", $customer['player_id']);
@@ -148,18 +127,11 @@ try {
         $stmt->close();
     }
 
-    // ─── 4. OTP row delete (one-time use) ───
-    $del = $db->prepare("DELETE FROM hascol_device_change_otps WHERE id = ?");
-    $del->bind_param("i", $otpId);
-    $del->execute();
-    $del->close();
-
     $db->commit();
 
     jsonResponse([
         'status'     => 'success',
-        'message'    => 'Device change successful. You can now login on the new device.',
-        'request_id' => (int)$requestId,
+        'message'    => 'OTP verified successfully. Your device IMEI has been updated. You can now login on the new device.',
     ]);
 
 } catch (Throwable $e) {
