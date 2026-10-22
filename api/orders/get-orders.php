@@ -91,7 +91,8 @@ $sql = "
         c.email AS customer_email,
         d.name AS dealer_name,
         d.mobile AS dealer_mobile,
-        d.station_name AS dealer_station
+        d.station_name AS dealer_station,
+        d.address AS dealer_address
     FROM orders o
     LEFT JOIN hascol_customer c ON c.id = o.customer_id
     LEFT JOIN hascol_dealers d ON d.id = o.dealer_id
@@ -130,6 +131,7 @@ while ($row = $result->fetch_assoc()) {
         'dealer_name'      => $row['dealer_name'] ?? '—',
         'dealer_mobile'    => $row['dealer_mobile'] ?? '',
         'dealer_station'   => $row['dealer_station'] ?? '',
+        'dealer_address'   => $row['dealer_address'] ?? '',
         'player_key'       => $row['player_key'],
         'player_id'        => $row['player_id'],
         'subtotal'         => (float)$row['subtotal'],
