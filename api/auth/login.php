@@ -1,7 +1,7 @@
 <?php
 // 1. Headers (CORS Setup)
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: https://hascol.flamboyant-spence.92-205-119-218.plesk.page/'); // Frontend URL
+header('Access-Control-Allow-Origin: http://localhost:8080'); // Frontend URL
 header('Access-Control-Allow-Credentials: true'); // Cookies allow karne ke liye
 header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
@@ -14,7 +14,7 @@ session_set_cookie_params([
     'lifetime' => 0,
     'path' => '/', 
     'domain' => '', // khali chhorein, browser khud handle karega
-    'secure' => true,
+    'secure' => false,
     'httponly' => true,
     'samesite' => 'Lax'
 ]);
