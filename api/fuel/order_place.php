@@ -83,7 +83,7 @@ try {
                 LIMIT 1";
     $imeiResult = $db->query($imeiSql);
     if (!$imeiResult || $imeiResult->num_rows === 0) {
-        throw new Exception('IMEI does not match with customer. Please login from registered device.');
+        throw new Exception('IMEI does not match with customer.');
     }
 
     // 6. CALCULATION
