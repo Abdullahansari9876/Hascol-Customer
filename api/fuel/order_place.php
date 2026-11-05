@@ -24,8 +24,8 @@ try {
         throw new Exception('Invalid JSON input');
     }
 
-    // 2. VALIDATION
-    $required = ['customer_id', 'dealer_id', 'player_id', 'product_id', 'quantity'];
+    // 2. VALIDATION (sirf imei, player_id nahi)
+    $required = ['customer_id', 'dealer_id', 'imei', 'product_id', 'quantity'];
     foreach ($required as $field) {
         if (empty($input[$field])) {
             throw new Exception("$field is required");
@@ -34,7 +34,7 @@ try {
 
     $customer_id = (int)$input['customer_id'];
     $dealer_id   = (int)$input['dealer_id'];
-    $player_id   = $db->real_escape_string($input['player_id']);
+    $imei        = $db->real_escape_string($input['imei']);
     $product_id  = (int)$input['product_id'];
     $quantity    = (float)$input['quantity'];
 
@@ -72,26 +72,24 @@ try {
     $dealer = $dealerResult->fetch_assoc();
     $station_name = $db->real_escape_string($dealer['station_name']);
 
-    // 5b. PLAYER_ID VALIDATION (registered device check)
-    $playerSql = "SELECT id, player_id FROM hascol_customer 
-                  WHERE id = $customer_id AND player_id = '$player_id' 
-                  LIMIT 1";
-    $playerResult = $db->query($playerSql);
-    if (!$playerResult || $playerResult->num_rows === 0) {
-        throw new Exception('Player ID does not match with customer. Please login from registered device.');
+    // 5b. IMEI VALIDATION (sirf imei check hoga)
+    $imeiSql = "SELECT id FROM hascol_customer 
+                WHERE id = $customer_id AND imei = '$imei' 
+                LIMIT 1";
+    $imeiResult = $db->query($imeiSql);
+    if (!$imeiResult || $imeiResult->num_rows === 0) {
+        throw new Exception('IMEI does not match with customer. Please login from registered device.');
     }
 
-    // 6. CALCULATION (fuel pe discount NAHI — client bheje to ignore)
+    // 6. CALCULATION
     $subtotal     = $rate * $quantity;
-    $discount     = 0.00;   // hardcoded — client se discount nahi lena
+    $discount     = 0.00;
     $total_amount = $subtotal - $discount;
 
-    // 7. ORDER NUMBER — format: ORD + YYYYMMDD + 6 random digits
-    //    Example: ORD20261105 + 589971 = ORD20261105589971
+    // 7. ORDER NUMBER
     $order_number = 'ORD' . date('Ymd') . rand(100000, 999999);
 
-    // 8. TRANSACTION REF — format: TXN + 6 hex uppercase
-    //    Example: TXNF6AA382204
+    // 8. TRANSACTION REF
     $txn_ref = 'TXN' . strtoupper(bin2hex(random_bytes(5)));
     $txn_ref_esc = $db->real_escape_string($txn_ref);
 
@@ -99,13 +97,13 @@ try {
     $db->begin_transaction();
 
     try {
-        // 9a. ORDERS
+        // 9a. ORDERS — player_id column insert hi nahi ho raha
         $orderSql = "INSERT INTO orders 
-            (order_number, order_type, customer_id, dealer_id, player_id,
+            (order_number, order_type, customer_id, dealer_id,
              subtotal, discount, total_amount, coupon_id, coupon_code,
              status, payment_status, delivery_type, station_name, created_at, updated_at)
             VALUES 
-            ('$order_number', 'fuel', $customer_id, $dealer_id, '$player_id',
+            ('$order_number', 'fuel', $customer_id, $dealer_id,
              $subtotal, $discount, $total_amount, NULL, NULL,
              'confirmed', 'paid', 'pickup', '$station_name', NOW(), NOW())";
 
@@ -128,13 +126,13 @@ try {
         }
         $order_item_id = $db->insert_id;
 
-        // 9c. TRANSACTIONS
+        // 9c. TRANSACTIONS — player_id column insert hi nahi ho raha
         $txnSql = "INSERT INTO transactions 
-            (customer_id, order_id, customer_name, dealer_id, player_id,
+            (customer_id, order_id, customer_name, dealer_id,
              station_name, product_name, amount, discount, final_amount,
              coupon_id, coupon_code, order_type, status, transaction_ref, created_at, updated_at)
             VALUES 
-            ($customer_id, $order_id, '$customer_name', $dealer_id, '$player_id',
+            ($customer_id, $order_id, '$customer_name', $dealer_id,
              '$station_name', '$product_name_esc', $subtotal, $discount, $total_amount,
              NULL, NULL, 'fuel', 'successful', '$txn_ref_esc', NOW(), NOW())";
 
