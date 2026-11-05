@@ -32,27 +32,32 @@ try {
         }
     }
 
-    $customer_id = (int)$input['customer_id'];
-    $dealer_id   = (int)$input['dealer_id'];
-    $imei        = $db->real_escape_string($input['imei']);
-    $product_id  = (int)$input['product_id'];
-    $quantity    = (float)$input['quantity'];
+    $customer_id = (int) $input['customer_id'];
+    $dealer_id = (int) $input['dealer_id'];
+    $imei = $db->real_escape_string($input['imei']);
+    $product_id = (int) $input['product_id'];
+    $quantity = (float) $input['quantity'];
 
     if ($quantity <= 0) {
         throw new Exception('Quantity must be greater than 0');
     }
 
     // 3. PRODUCT
-    $productSql = "SELECT id, name, rate, unit 
-                   FROM fuel_products 
-                   WHERE id = $product_id AND is_active = 1 
-                   LIMIT 1";
+    $productSql = "SELECT 
+                  fp.id, fp.name, fp.unit, fr.rate
+               FROM fuel_products fp
+               INNER JOIN fuel_rates fr ON fr.product_id = fp.id
+               WHERE fp.id = $product_id 
+                 AND fr.dealer_id = $dealer_id
+                 AND fp.is_active = 1
+                 AND fr.is_active = 1
+               LIMIT 1";
     $productResult = $db->query($productSql);
     if (!$productResult || $productResult->num_rows === 0) {
         throw new Exception('Invalid or inactive fuel product');
     }
     $product = $productResult->fetch_assoc();
-    $rate = (float)$product['rate'];
+    $rate = (float) $product['rate'];
 
     // 4. CUSTOMER
     $custSql = "SELECT id, name FROM hascol_customer WHERE id = $customer_id LIMIT 1";
@@ -82,8 +87,8 @@ try {
     }
 
     // 6. CALCULATION
-    $subtotal     = $rate * $quantity;
-    $discount     = 0.00;
+    $subtotal = $rate * $quantity;
+    $discount = 0.00;
     $total_amount = $subtotal - $discount;
 
     // 7. ORDER NUMBER
@@ -146,24 +151,24 @@ try {
 
         // 10. SUCCESS
         echo json_encode([
-            'status'  => true,
+            'status' => true,
             'message' => 'Fuel order placed successfully',
             'data' => [
-                'order_id'        => $order_id,
-                'order_number'    => $order_number,
-                'order_item_id'   => $order_item_id,
-                'transaction_id'  => $transaction_id,
+                'order_id' => $order_id,
+                'order_number' => $order_number,
+                'order_item_id' => $order_item_id,
+                'transaction_id' => $transaction_id,
                 'transaction_ref' => $txn_ref,
                 'product' => [
-                    'id'   => (int)$product['id'],
+                    'id' => (int) $product['id'],
                     'name' => $product['name'],
                     'unit' => $product['unit']
                 ],
                 'station_name' => $dealer['station_name'],
-                'rate'         => $rate,
-                'quantity'     => $quantity,
-                'subtotal'     => $subtotal,
-                'discount'     => $discount,
+                'rate' => $rate,
+                'quantity' => $quantity,
+                'subtotal' => $subtotal,
+                'discount' => $discount,
                 'total_amount' => $total_amount
             ]
         ]);
