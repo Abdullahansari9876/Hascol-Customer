@@ -1,0 +1,105 @@
+<?php
+header('Content-Type: application/json');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET');
+
+require '../config.php';
+require '../db.php';
+
+if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+    http_response_code(405);
+    echo json_encode(['status' => false, 'message' => 'Method not allowed. Use GET.']);
+    exit;
+}
+
+try {
+    $db = getDBConnection();
+
+    // 1. CUSTOMER_ID
+    if (empty($_GET['customer_id'])) {
+        throw new Exception('customer_id is required');
+    }
+    $customer_id = (int)$_GET['customer_id'];
+
+    // 2. CUSTOMER EXIST
+    $custSql = "SELECT id, name FROM hascol_customer 
+                WHERE id = $customer_id AND status = 'active' LIMIT 1";
+    $custResult = $db->query($custSql);
+    if (!$custResult || $custResult->num_rows === 0) {
+        throw new Exception('Customer not found or inactive');
+    }
+    $customer = $custResult->fetch_assoc();
+
+    // 3. MONTHLY DISCOUNT LIMIT CONFIG
+    $monthly_discount_limit = 250.00;
+    $discount_per_litre     = 1.00;
+
+    // 4. MONTH RANGE
+    $monthStart = date('Y-m-01 00:00:00');
+    $monthEnd   = date('Y-m-t 23:59:59');
+
+    // 5. USAGE QUERY
+    $usageSql = "SELECT 
+                    COALESCE(SUM(oi.quantity), 0) AS total_litres,
+                    COALESCE(SUM(o.discount), 0)  AS total_discount_used,
+                    COALESCE(SUM(o.total_amount), 0) AS total_amount_paid,
+                    COUNT(DISTINCT o.id) AS total_orders
+                 FROM orders o
+                 INNER JOIN order_items oi ON oi.order_id = o.id
+                 WHERE o.customer_id = $customer_id
+                   AND o.order_type = 'fuel'
+                   AND o.status IN ('pending','confirmed','processing','completed')
+                   AND o.created_at BETWEEN '$monthStart' AND '$monthEnd'";
+
+    $usageResult = $db->query($usageSql);
+    if (!$usageResult) {
+        throw new Exception('Usage query failed: ' . $db->error);
+    }
+    $usage = $usageResult->fetch_assoc();
+
+    $used_litres       = (float)$usage['total_litres'];
+    $discount_used     = (float)$usage['total_discount_used'];
+    $total_amount_paid = (float)$usage['total_amount_paid'];
+    $total_orders      = (int)$usage['total_orders'];
+
+    // 6. REMAINING DISCOUNT
+    $remaining_discount = $monthly_discount_limit - $discount_used;
+    if ($remaining_discount < 0) {
+        $remaining_discount = 0;
+    }
+
+    $usage_percent = $monthly_discount_limit > 0
+        ? round(($discount_used / $monthly_discount_limit) * 100, 2)
+        : 0;
+
+    // 7. RESPONSE (3 fields removed)
+    echo json_encode([
+        'status'  => true,
+        'message' => 'Customer fuel usage fetched successfully',
+        'data' => [
+            'customer' => [
+                'id'   => (int)$customer['id'],
+                'name' => $customer['name']
+            ],
+            'month'                    => date('Y-m'),
+            'month_start'              => $monthStart,
+            'month_end'                => $monthEnd,
+
+            'monthly_discount_limit'   => $monthly_discount_limit,
+            'discount_per_litre'       => $discount_per_litre,
+            'discount_used'            => $discount_used,
+            'remaining_discount'       => $remaining_discount,
+            'usage_percent'            => $usage_percent,
+
+            'total_litres_used'        => $used_litres,
+            'total_amount_paid'        => $total_amount_paid,
+            'total_orders'             => $total_orders,
+
+            'server_time'              => date('Y-m-d H:i:s')
+        ]
+    ]);
+
+} catch (Exception $e) {
+    http_response_code(400);
+    echo json_encode(['status' => false, 'message' => $e->getMessage()]);
+}

@@ -24,52 +24,28 @@ try {
         throw new Exception('Invalid JSON input');
     }
 
-    // 2. VALIDATION (sirf imei, player_id nahi)
-    $required = ['customer_id', 'dealer_id', 'imei', 'product_id', 'quantity'];
+    // 2. VALIDATION
+    $required = ['customer_id', 'dealer_id', 'product_id', 'quantity'];
     foreach ($required as $field) {
         if (empty($input[$field])) {
             throw new Exception("$field is required");
         }
     }
 
-    $customer_id = (int) $input['customer_id'];
-    $dealer_id = (int) $input['dealer_id'];
-    $imei = $db->real_escape_string($input['imei']);
-    $product_id = (int) $input['product_id'];
-    $quantity = (float) $input['quantity'];
+    $customer_id = (int)$input['customer_id'];
+    $dealer_id   = (int)$input['dealer_id'];
+    $product_id  = (int)$input['product_id'];
+    $quantity    = (float)$input['quantity'];
 
     if ($quantity <= 0) {
         throw new Exception('Quantity must be greater than 0');
     }
 
-    // 3. PRODUCT
-    $productSql = "SELECT 
-                  fp.id, fp.name, fp.unit, fr.rate
-               FROM fuel_products fp
-               INNER JOIN fuel_rates fr ON fr.product_id = fp.id
-               WHERE fp.id = $product_id 
-                 AND fr.dealer_id = $dealer_id
-                 AND fp.is_active = 1
-                 AND fr.is_active = 1
-               LIMIT 1";
-    $productResult = $db->query($productSql);
-    if (!$productResult || $productResult->num_rows === 0) {
-        throw new Exception('Invalid or inactive fuel product');
-    }
-    $product = $productResult->fetch_assoc();
-    $rate = (float) $product['rate'];
-
-    // 4. CUSTOMER
-    $custSql = "SELECT id, name FROM hascol_customer WHERE id = $customer_id LIMIT 1";
-    $custResult = $db->query($custSql);
-    if (!$custResult || $custResult->num_rows === 0) {
-        throw new Exception('Customer not found');
-    }
-    $customer = $custResult->fetch_assoc();
-    $customer_name = $db->real_escape_string($customer['name']);
-
-    // 5. DEALER
-    $dealerSql = "SELECT id, station_name FROM hascol_dealers WHERE id = $dealer_id LIMIT 1";
+    // ============================================
+    // 3. DEALER CHECK — PEHLE (taake error clear ho)
+    // ============================================
+    $dealerSql = "SELECT id, station_name FROM hascol_dealers 
+                  WHERE id = $dealer_id LIMIT 1";
     $dealerResult = $db->query($dealerSql);
     if (!$dealerResult || $dealerResult->num_rows === 0) {
         throw new Exception('Dealer not found');
@@ -77,32 +53,93 @@ try {
     $dealer = $dealerResult->fetch_assoc();
     $station_name = $db->real_escape_string($dealer['station_name']);
 
-    // 5b. IMEI VALIDATION (sirf imei check hoga)
-    $imeiSql = "SELECT id FROM hascol_customer 
-                WHERE id = $customer_id AND imei = '$imei' 
-                LIMIT 1";
-    $imeiResult = $db->query($imeiSql);
-    if (!$imeiResult || $imeiResult->num_rows === 0) {
-        throw new Exception('IMEI does not match with customer.');
+    // ============================================
+    // 4. PRODUCT CHECK (dealer-wise rate)
+    // ============================================
+    $productSql = "SELECT 
+                     fp.id, fp.name, fp.unit, fr.rate
+                   FROM fuel_products fp
+                   INNER JOIN fuel_rates fr ON fr.product_id = fp.id
+                   WHERE fp.id = $product_id 
+                     AND fr.dealer_id = $dealer_id
+                     AND fp.is_active = 1
+                     AND fr.is_active = 1
+                   LIMIT 1";
+    $productResult = $db->query($productSql);
+    if (!$productResult || $productResult->num_rows === 0) {
+        throw new Exception('Product not available for this dealer');
+    }
+    $product = $productResult->fetch_assoc();
+    $rate = (float)$product['rate'];
+
+    // ============================================
+    // 5. CUSTOMER CHECK
+    // ============================================
+    $custSql = "SELECT id, name FROM hascol_customer 
+                WHERE id = $customer_id AND status = 'active' LIMIT 1";
+    $custResult = $db->query($custSql);
+    if (!$custResult || $custResult->num_rows === 0) {
+        throw new Exception('Customer not found or inactive');
+    }
+    $customer = $custResult->fetch_assoc();
+    $customer_name = $db->real_escape_string($customer['name']);
+
+    // ============================================
+    // 6. DISCOUNT CALCULATION + MONTHLY LIMIT
+    // ============================================
+    $discount_per_litre     = 1.00;
+    $monthly_discount_limit = 250.00;
+
+    $subtotal = $rate * $quantity;
+
+    $monthStart = date('Y-m-01 00:00:00');
+    $monthEnd   = date('Y-m-t 23:59:59');
+
+    $discountUsageSql = "SELECT COALESCE(SUM(discount), 0) AS used_discount
+                         FROM orders
+                         WHERE customer_id = $customer_id
+                           AND order_type = 'fuel'
+                           AND status IN ('pending','confirmed','processing','completed')
+                           AND created_at BETWEEN '$monthStart' AND '$monthEnd'";
+    $discountUsageResult = $db->query($discountUsageSql);
+    if (!$discountUsageResult) {
+        throw new Exception('Discount usage query failed: ' . $db->error);
+    }
+    $used_discount = (float)$discountUsageResult->fetch_assoc()['used_discount'];
+
+    $remaining_discount = $monthly_discount_limit - $used_discount;
+    if ($remaining_discount < 0) {
+        $remaining_discount = 0;
     }
 
-    // 6. CALCULATION
-    $subtotal = $rate * $quantity;
-    $discount = 0.00;
+    $requested_discount = $quantity * $discount_per_litre;
+
+    if ($requested_discount > $remaining_discount) {
+        $discount = $remaining_discount;
+    } else {
+        $discount = $requested_discount;
+    }
+
     $total_amount = $subtotal - $discount;
 
+    // ============================================
     // 7. ORDER NUMBER
+    // ============================================
     $order_number = 'ORD' . date('Ymd') . rand(100000, 999999);
 
+    // ============================================
     // 8. TRANSACTION REF
+    // ============================================
     $txn_ref = 'TXN' . strtoupper(bin2hex(random_bytes(5)));
     $txn_ref_esc = $db->real_escape_string($txn_ref);
 
+    // ============================================
     // 9. TRANSACTION START
+    // ============================================
     $db->begin_transaction();
 
     try {
-        // 9a. ORDERS — player_id column insert hi nahi ho raha
+        // 9a. ORDERS
         $orderSql = "INSERT INTO orders 
             (order_number, order_type, customer_id, dealer_id,
              subtotal, discount, total_amount, coupon_id, coupon_code,
@@ -131,7 +168,7 @@ try {
         }
         $order_item_id = $db->insert_id;
 
-        // 9c. TRANSACTIONS — player_id column insert hi nahi ho raha
+        // 9c. TRANSACTIONS
         $txnSql = "INSERT INTO transactions 
             (customer_id, order_id, customer_name, dealer_id,
              station_name, product_name, amount, discount, final_amount,
@@ -149,27 +186,36 @@ try {
         // 9d. COMMIT
         $db->commit();
 
-        // 10. SUCCESS
+        // ============================================
+        // 10. SUCCESS (requested_discount removed)
+        // ============================================
         echo json_encode([
-            'status' => true,
+            'status'  => true,
             'message' => 'Fuel order placed successfully',
             'data' => [
-                'order_id' => $order_id,
-                'order_number' => $order_number,
-                'order_item_id' => $order_item_id,
-                'transaction_id' => $transaction_id,
+                'order_id'        => $order_id,
+                'order_number'    => $order_number,
+                'order_item_id'   => $order_item_id,
+                'transaction_id'  => $transaction_id,
                 'transaction_ref' => $txn_ref,
                 'product' => [
-                    'id' => (int) $product['id'],
+                    'id'   => (int)$product['id'],
                     'name' => $product['name'],
                     'unit' => $product['unit']
                 ],
-                'station_name' => $dealer['station_name'],
-                'rate' => $rate,
-                'quantity' => $quantity,
-                'subtotal' => $subtotal,
-                'discount' => $discount,
-                'total_amount' => $total_amount
+                'station_name'   => $dealer['station_name'],
+                'rate'           => $rate,
+                'quantity'       => $quantity,
+                'subtotal'       => $subtotal,
+                'discount'       => $discount,
+                'total_amount'   => $total_amount,
+                'discount_info' => [
+                    'discount_per_litre' => $discount_per_litre,
+                    'discount_applied'   => $discount,
+                    'monthly_limit'      => $monthly_discount_limit,
+                    'used_before'        => $used_discount,
+                    'remaining_after'    => max(0, $remaining_discount - $discount)
+                ]
             ]
         ]);
 
