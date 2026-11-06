@@ -87,10 +87,6 @@ try {
 
     // ============================================
     // 6. DISCOUNT CALCULATION
-    //    Priority:
-    //    1. Agar body me discount aaya → use karo (validate karke)
-    //    2. Warna server calculate kare (Rs 1/litre)
-    //    Dono case me monthly limit check hogi.
     // ============================================
     $discount_per_litre     = 1.00;
     $monthly_discount_limit = 250.00;
@@ -121,12 +117,10 @@ try {
         // Body se discount aaya
         $discount = $client_discount;
 
-        // ⚠️ SECURITY: Discount subtotal se zyada nahi ho sakta
         if ($discount > $subtotal) {
             throw new Exception('Discount cannot be greater than subtotal (Rs ' . number_format($subtotal, 2) . ')');
         }
 
-        // ⚠️ SECURITY: Monthly remaining se zyada nahi ho sakta
         if ($discount > $remaining_discount) {
             throw new Exception(
                 'Discount exceeds monthly remaining. ' .
@@ -135,7 +129,7 @@ try {
             );
         }
     } else {
-        // Body me discount nahi aaya — server calculate kare (Rs 1/litre)
+        // Server calculate kare (Rs 1/litre)
         $requested_discount = $quantity * $discount_per_litre;
 
         if ($requested_discount > $remaining_discount) {
@@ -146,6 +140,9 @@ try {
     }
 
     $total_amount = $subtotal - $discount;
+
+    // Total used (is order ke baad)
+    $total_used = $used_discount + $discount;
 
     // 7. ORDER NUMBER
     $order_number = 'ORD' . date('Ymd') . rand(100000, 999999);
@@ -228,10 +225,9 @@ try {
                 'total_amount'   => $total_amount,
                 'discount_info' => [
                     'discount_per_litre'  => $discount_per_litre,
-                    // 'discount_source'     => ($client_discount !== null) ? 'client' : 'server',
                     'discount_applied'    => $discount,
                     'monthly_limit'       => $monthly_discount_limit,
-                    'used_before'         => $used_discount,
+                    'total_used'          => $total_used,
                     'remaining_after'     => max(0, $remaining_discount - $discount)
                 ]
             ]
