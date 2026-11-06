@@ -73,14 +73,13 @@ try {
         : 0;
 
     // ============================================
-    // 7. QR STATUS — SIRF SERVER TIME SE MATCH
-    //    Latest fuel order ka created_at vs server_time
-    //    Valid time = 5 minutes
+    // 7. QR STATUS — USE-BASED (qr_used column)
+    //    qr_used = 0 → active
+    //    qr_used = 1 → inactive
     // ============================================
-    $server_time      = date('Y-m-d H:i:s');
-    $qr_valid_minutes = 5;
+    $server_time = date('Y-m-d H:i:s');
 
-    $qrSql = "SELECT id, order_number, created_at 
+    $qrSql = "SELECT id, order_number, created_at, qr_used 
               FROM orders 
               WHERE customer_id = $customer_id 
                 AND order_type = 'fuel'
@@ -93,11 +92,9 @@ try {
     if ($qrResult && $qrResult->num_rows > 0) {
         $latest_order = $qrResult->fetch_assoc();
 
-        $created_ts   = strtotime($latest_order['created_at']);
-        $server_ts    = strtotime($server_time);
-        $diff_minutes = ($server_ts - $created_ts) / 60;
+        $qr_used = (int)$latest_order['qr_used'];
 
-        if ($diff_minutes <= $qr_valid_minutes) {
+        if ($qr_used === 0) {
             $qr_status = 'active';
             $is_active = true;
         } else {
@@ -106,14 +103,12 @@ try {
         }
 
         $qr_info = [
-            'order_id'      => (int)$latest_order['id'],
-            'order_number'  => $latest_order['order_number'],
-            'status'        => $qr_status,
-            'is_active'     => $is_active,
-            'valid_minutes' => $qr_valid_minutes,
-            'qr_time'       => $latest_order['created_at'],
-            'minutes_ago'   => round($diff_minutes, 2),
-            'expires_at'    => date('Y-m-d H:i:s', strtotime($latest_order['created_at'] . ' +' . $qr_valid_minutes . ' minutes'))
+            'order_id'     => (int)$latest_order['id'],
+            'order_number' => $latest_order['order_number'],
+            'status'       => $qr_status,
+            'is_active'    => $is_active,
+            'qr_time'      => $latest_order['created_at'],
+            'qr_used'      => $qr_used
         ];
     }
 

@@ -32,13 +32,12 @@ try {
         }
     }
 
-    $customer_id = (int) $input['customer_id'];
-    $dealer_id = (int) $input['dealer_id'];
-    $product_id = (int) $input['product_id'];
-    $quantity = (float) $input['quantity'];
+    $customer_id = (int)$input['customer_id'];
+    $dealer_id   = (int)$input['dealer_id'];
+    $product_id  = (int)$input['product_id'];
+    $quantity    = (float)$input['quantity'];
 
-    // Body se discount (optional)
-    $client_discount = isset($input['discount']) ? (float) $input['discount'] : null;
+    $client_discount = isset($input['discount']) ? (float)$input['discount'] : null;
 
     if ($quantity <= 0) {
         throw new Exception('Quantity must be greater than 0');
@@ -73,7 +72,7 @@ try {
         throw new Exception('Product not available for this dealer');
     }
     $product = $productResult->fetch_assoc();
-    $rate = (float) $product['rate'];
+    $rate = (float)$product['rate'];
 
     // 5. CUSTOMER CHECK
     $custSql = "SELECT id, name FROM hascol_customer 
@@ -85,16 +84,14 @@ try {
     $customer = $custResult->fetch_assoc();
     $customer_name = $db->real_escape_string($customer['name']);
 
-    // ============================================
     // 6. DISCOUNT CALCULATION
-    // ============================================
-    $discount_per_litre = 1.00;
+    $discount_per_litre     = 1.00;
     $monthly_discount_limit = 250.00;
 
     $subtotal = $rate * $quantity;
 
     $monthStart = date('Y-m-01 00:00:00');
-    $monthEnd = date('Y-m-t 23:59:59');
+    $monthEnd   = date('Y-m-t 23:59:59');
 
     $discountUsageSql = "SELECT COALESCE(SUM(discount), 0) AS used_discount
                          FROM orders
@@ -106,7 +103,7 @@ try {
     if (!$discountUsageResult) {
         throw new Exception('Discount usage query failed: ' . $db->error);
     }
-    $used_discount = (float) $discountUsageResult->fetch_assoc()['used_discount'];
+    $used_discount = (float)$discountUsageResult->fetch_assoc()['used_discount'];
 
     $remaining_discount = $monthly_discount_limit - $used_discount;
     if ($remaining_discount < 0) {
@@ -114,7 +111,6 @@ try {
     }
 
     if ($client_discount !== null) {
-        // Body se discount aaya
         $discount = $client_discount;
 
         if ($discount > $subtotal) {
@@ -129,7 +125,6 @@ try {
             );
         }
     } else {
-        // Server calculate kare (Rs 1/litre)
         $requested_discount = $quantity * $discount_per_litre;
 
         if ($requested_discount > $remaining_discount) {
@@ -140,9 +135,7 @@ try {
     }
 
     $total_amount = $subtotal - $discount;
-
-    // Total used (is order ke baad)
-    $total_used = $used_discount + $discount;
+    $total_used   = $used_discount + $discount;
 
     // 7. ORDER NUMBER
     $order_number = 'ORD' . date('Ymd') . rand(100000, 999999);
@@ -159,11 +152,11 @@ try {
         $orderSql = "INSERT INTO orders 
             (order_number, order_type, customer_id, dealer_id,
              subtotal, discount, total_amount, coupon_id, coupon_code,
-             status, payment_status, delivery_type, station_name, created_at, updated_at)
+             status, payment_status, delivery_type, station_name, qr_used, created_at, updated_at)
             VALUES 
             ('$order_number', 'fuel', $customer_id, $dealer_id,
              $subtotal, $discount, $total_amount, NULL, NULL,
-             'confirmed', 'paid', 'pickup', '$station_name', NOW(), NOW())";
+             'confirmed', 'paid', 'pickup', '$station_name', 0, NOW(), NOW())";
 
         if (!$db->query($orderSql)) {
             throw new Exception('Orders insert failed: ' . $db->error);
@@ -199,36 +192,42 @@ try {
         }
         $transaction_id = $db->insert_id;
 
-        // 9d. COMMIT
+        // ============================================
+        // 9d. QR USED MARK — is order ka QR use ho gaya
+        //     (customer_usage.php me inactive dikhega)
+        // ============================================
+        $markQrSql = "UPDATE orders SET qr_used = 1 WHERE id = $order_id";
+        if (!$db->query($markQrSql)) {
+            throw new Exception('QR mark failed: ' . $db->error);
+        }
+
+        // 9e. COMMIT
         $db->commit();
 
         // 10. SUCCESS
         echo json_encode([
-            'status' => true,
+            'status'  => true,
             'message' => 'Fuel order placed successfully',
             'data' => [
-                'order_id' => $order_id,
-                'order_number' => $order_number,
-                'order_item_id' => $order_item_id,
-                'transaction_id' => $transaction_id,
+                'order_id'        => $order_id,
+                'order_number'    => $order_number,
+                'order_item_id'   => $order_item_id,
+                'transaction_id'  => $transaction_id,
                 'transaction_ref' => $txn_ref,
                 'product' => [
-                    'id' => (int) $product['id'],
+                    'id'   => (int)$product['id'],
                     'name' => $product['name'],
                     'unit' => $product['unit']
                 ],
                 'discount_info' => [
-                    'station_name' => $dealer['station_name'],
-                    'rate' => $rate,
-                    'quantity' => $quantity,
-                    'subtotal' => $subtotal,
-                    'discount' => $discount,
-                    'total_amount' => $total_amount,
+                    'station_name'       => $dealer['station_name'],
+                    'rate'               => $rate,
+                    'quantity'           => $quantity,
+                    'subtotal'           => $subtotal,
+                    'discount'           => $discount,
+                    'total_amount'       => $total_amount,
                     'discount_per_litre' => $discount_per_litre,
-                    // 'discount_applied'    => $discount,
-                    // 'monthly_limit'       => $monthly_discount_limit,
-                    // 'total_used'          => $total_used,
-                    'remaining_after' => max(0, $remaining_discount - $discount)
+                    'remaining_after'    => max(0, $remaining_discount - $discount)
                 ]
             ]
         ]);
