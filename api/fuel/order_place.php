@@ -32,13 +32,13 @@ try {
         }
     }
 
-    $customer_id = (int)$input['customer_id'];
-    $dealer_id   = (int)$input['dealer_id'];
-    $product_id  = (int)$input['product_id'];
-    $quantity    = (float)$input['quantity'];
+    $customer_id = (int) $input['customer_id'];
+    $dealer_id = (int) $input['dealer_id'];
+    $product_id = (int) $input['product_id'];
+    $quantity = (float) $input['quantity'];
 
     // Body se discount (optional)
-    $client_discount = isset($input['discount']) ? (float)$input['discount'] : null;
+    $client_discount = isset($input['discount']) ? (float) $input['discount'] : null;
 
     if ($quantity <= 0) {
         throw new Exception('Quantity must be greater than 0');
@@ -73,7 +73,7 @@ try {
         throw new Exception('Product not available for this dealer');
     }
     $product = $productResult->fetch_assoc();
-    $rate = (float)$product['rate'];
+    $rate = (float) $product['rate'];
 
     // 5. CUSTOMER CHECK
     $custSql = "SELECT id, name FROM hascol_customer 
@@ -88,13 +88,13 @@ try {
     // ============================================
     // 6. DISCOUNT CALCULATION
     // ============================================
-    $discount_per_litre     = 1.00;
+    $discount_per_litre = 1.00;
     $monthly_discount_limit = 250.00;
 
     $subtotal = $rate * $quantity;
 
     $monthStart = date('Y-m-01 00:00:00');
-    $monthEnd   = date('Y-m-t 23:59:59');
+    $monthEnd = date('Y-m-t 23:59:59');
 
     $discountUsageSql = "SELECT COALESCE(SUM(discount), 0) AS used_discount
                          FROM orders
@@ -106,7 +106,7 @@ try {
     if (!$discountUsageResult) {
         throw new Exception('Discount usage query failed: ' . $db->error);
     }
-    $used_discount = (float)$discountUsageResult->fetch_assoc()['used_discount'];
+    $used_discount = (float) $discountUsageResult->fetch_assoc()['used_discount'];
 
     $remaining_discount = $monthly_discount_limit - $used_discount;
     if ($remaining_discount < 0) {
@@ -204,31 +204,31 @@ try {
 
         // 10. SUCCESS
         echo json_encode([
-            'status'  => true,
+            'status' => true,
             'message' => 'Fuel order placed successfully',
             'data' => [
-                'order_id'        => $order_id,
-                'order_number'    => $order_number,
-                'order_item_id'   => $order_item_id,
-                'transaction_id'  => $transaction_id,
+                'order_id' => $order_id,
+                'order_number' => $order_number,
+                'order_item_id' => $order_item_id,
+                'transaction_id' => $transaction_id,
                 'transaction_ref' => $txn_ref,
                 'product' => [
-                    'id'   => (int)$product['id'],
+                    'id' => (int) $product['id'],
                     'name' => $product['name'],
                     'unit' => $product['unit']
                 ],
-                'station_name'   => $dealer['station_name'],
-                'rate'           => $rate,
-                'quantity'       => $quantity,
-                'subtotal'       => $subtotal,
-                'discount'       => $discount,
-                'total_amount'   => $total_amount,
                 'discount_info' => [
-                    'discount_per_litre'  => $discount_per_litre,
+                    'station_name' => $dealer['station_name'],
+                    'rate' => $rate,
+                    'quantity' => $quantity,
+                    'subtotal' => $subtotal,
+                    'discount' => $discount,
+                    'total_amount' => $total_amount,
+                    'discount_per_litre' => $discount_per_litre,
                     // 'discount_applied'    => $discount,
                     // 'monthly_limit'       => $monthly_discount_limit,
                     // 'total_used'          => $total_used,
-                    'remaining_after'     => max(0, $remaining_discount - $discount)
+                    'remaining_after' => max(0, $remaining_discount - $discount)
                 ]
             ]
         ]);
