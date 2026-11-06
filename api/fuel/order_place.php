@@ -226,8 +226,8 @@ try {
                 'discount_info' => [
                     'discount_per_litre'  => $discount_per_litre,
                     // 'discount_applied'    => $discount,
-                    'monthly_limit'       => $monthly_discount_limit,
-                    'total_used'          => $total_used,
+                    // 'monthly_limit'       => $monthly_discount_limit,
+                    // 'total_used'          => $total_used,
                     'remaining_after'     => max(0, $remaining_discount - $discount)
                 ]
             ]
