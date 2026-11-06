@@ -74,11 +74,11 @@ try {
 
     // ============================================
     // 7. QR STATUS — SIRF SERVER TIME SE MATCH
-    //    Latest fuel order ka created_at server time se compare
-    //    Valid time = 5 minutes (aap change kar sakte ho)
+    //    Latest fuel order ka created_at vs server_time
+    //    Valid time = 5 minutes
     // ============================================
     $server_time      = date('Y-m-d H:i:s');
-    $qr_valid_minutes = 5;   // ← yahan time change karo agar 5 min nahi chahiye
+    $qr_valid_minutes = 5;
 
     $qrSql = "SELECT id, order_number, created_at 
               FROM orders 
@@ -93,12 +93,10 @@ try {
     if ($qrResult && $qrResult->num_rows > 0) {
         $latest_order = $qrResult->fetch_assoc();
 
-        // Server time se compare (minutes me difference)
         $created_ts   = strtotime($latest_order['created_at']);
         $server_ts    = strtotime($server_time);
         $diff_minutes = ($server_ts - $created_ts) / 60;
 
-        // Status decide
         if ($diff_minutes <= $qr_valid_minutes) {
             $qr_status = 'active';
             $is_active = true;
@@ -108,14 +106,14 @@ try {
         }
 
         $qr_info = [
-            'order_id'        => (int)$latest_order['id'],
-            'order_number'    => $latest_order['order_number'],
-            'status'          => $qr_status,          // active | inactive
-            'is_active'       => $is_active,
-            'valid_minutes'   => $qr_valid_minutes,
-            'qr_time'         => $latest_order['created_at'],
-            'minutes_ago'     => round($diff_minutes, 2),
-            'expires_at'      => date('Y-m-d H:i:s', strtotime($latest_order['created_at'] . ' +' . $qr_valid_minutes . ' minutes'))
+            'order_id'      => (int)$latest_order['id'],
+            'order_number'  => $latest_order['order_number'],
+            'status'        => $qr_status,
+            'is_active'     => $is_active,
+            'valid_minutes' => $qr_valid_minutes,
+            'qr_time'       => $latest_order['created_at'],
+            'minutes_ago'   => round($diff_minutes, 2),
+            'expires_at'    => date('Y-m-d H:i:s', strtotime($latest_order['created_at'] . ' +' . $qr_valid_minutes . ' minutes'))
         ];
     }
 
@@ -142,7 +140,7 @@ try {
             'total_amount_paid'        => $total_amount_paid,
             'total_orders'             => $total_orders,
 
-            'qr_info'                  => $qr_info,     // ← QR status
+            'qr_info'                  => $qr_info,
 
             'server_time'              => $server_time
         ]
