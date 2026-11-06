@@ -10,3 +10,7 @@ hascolbridge_api/
 
 # Ignore all zip files
 *.zip
+api/web.config
+
+# Ye line api folder ke andar wale auth folder ko ignore karegi
+api/auth/

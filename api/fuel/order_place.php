@@ -37,13 +37,18 @@ try {
     $product_id  = (int)$input['product_id'];
     $quantity    = (float)$input['quantity'];
 
+    // Body se discount (optional)
+    $client_discount = isset($input['discount']) ? (float)$input['discount'] : null;
+
     if ($quantity <= 0) {
         throw new Exception('Quantity must be greater than 0');
     }
 
-    // ============================================
-    // 3. DEALER CHECK — PEHLE (taake error clear ho)
-    // ============================================
+    if ($client_discount !== null && $client_discount < 0) {
+        throw new Exception('Discount cannot be negative');
+    }
+
+    // 3. DEALER CHECK
     $dealerSql = "SELECT id, station_name FROM hascol_dealers 
                   WHERE id = $dealer_id LIMIT 1";
     $dealerResult = $db->query($dealerSql);
@@ -53,9 +58,7 @@ try {
     $dealer = $dealerResult->fetch_assoc();
     $station_name = $db->real_escape_string($dealer['station_name']);
 
-    // ============================================
-    // 4. PRODUCT CHECK (dealer-wise rate)
-    // ============================================
+    // 4. PRODUCT CHECK
     $productSql = "SELECT 
                      fp.id, fp.name, fp.unit, fr.rate
                    FROM fuel_products fp
@@ -72,9 +75,7 @@ try {
     $product = $productResult->fetch_assoc();
     $rate = (float)$product['rate'];
 
-    // ============================================
     // 5. CUSTOMER CHECK
-    // ============================================
     $custSql = "SELECT id, name FROM hascol_customer 
                 WHERE id = $customer_id AND status = 'active' LIMIT 1";
     $custResult = $db->query($custSql);
@@ -85,7 +86,11 @@ try {
     $customer_name = $db->real_escape_string($customer['name']);
 
     // ============================================
-    // 6. DISCOUNT CALCULATION + MONTHLY LIMIT
+    // 6. DISCOUNT CALCULATION
+    //    Priority:
+    //    1. Agar body me discount aaya → use karo (validate karke)
+    //    2. Warna server calculate kare (Rs 1/litre)
+    //    Dono case me monthly limit check hogi.
     // ============================================
     $discount_per_litre     = 1.00;
     $monthly_discount_limit = 250.00;
@@ -112,30 +117,44 @@ try {
         $remaining_discount = 0;
     }
 
-    $requested_discount = $quantity * $discount_per_litre;
+    if ($client_discount !== null) {
+        // Body se discount aaya
+        $discount = $client_discount;
 
-    if ($requested_discount > $remaining_discount) {
-        $discount = $remaining_discount;
+        // ⚠️ SECURITY: Discount subtotal se zyada nahi ho sakta
+        if ($discount > $subtotal) {
+            throw new Exception('Discount cannot be greater than subtotal (Rs ' . number_format($subtotal, 2) . ')');
+        }
+
+        // ⚠️ SECURITY: Monthly remaining se zyada nahi ho sakta
+        if ($discount > $remaining_discount) {
+            throw new Exception(
+                'Discount exceeds monthly remaining. ' .
+                'Requested: Rs ' . number_format($discount, 2) . ', ' .
+                'Remaining: Rs ' . number_format($remaining_discount, 2)
+            );
+        }
     } else {
-        $discount = $requested_discount;
+        // Body me discount nahi aaya — server calculate kare (Rs 1/litre)
+        $requested_discount = $quantity * $discount_per_litre;
+
+        if ($requested_discount > $remaining_discount) {
+            $discount = $remaining_discount;
+        } else {
+            $discount = $requested_discount;
+        }
     }
 
     $total_amount = $subtotal - $discount;
 
-    // ============================================
     // 7. ORDER NUMBER
-    // ============================================
     $order_number = 'ORD' . date('Ymd') . rand(100000, 999999);
 
-    // ============================================
     // 8. TRANSACTION REF
-    // ============================================
     $txn_ref = 'TXN' . strtoupper(bin2hex(random_bytes(5)));
     $txn_ref_esc = $db->real_escape_string($txn_ref);
 
-    // ============================================
     // 9. TRANSACTION START
-    // ============================================
     $db->begin_transaction();
 
     try {
@@ -186,9 +205,7 @@ try {
         // 9d. COMMIT
         $db->commit();
 
-        // ============================================
-        // 10. SUCCESS (requested_discount removed)
-        // ============================================
+        // 10. SUCCESS
         echo json_encode([
             'status'  => true,
             'message' => 'Fuel order placed successfully',
@@ -210,11 +227,12 @@ try {
                 'discount'       => $discount,
                 'total_amount'   => $total_amount,
                 'discount_info' => [
-                    'discount_per_litre' => $discount_per_litre,
-                    'discount_applied'   => $discount,
-                    'monthly_limit'      => $monthly_discount_limit,
-                    'used_before'        => $used_discount,
-                    'remaining_after'    => max(0, $remaining_discount - $discount)
+                    'discount_per_litre'  => $discount_per_litre,
+                    // 'discount_source'     => ($client_discount !== null) ? 'client' : 'server',
+                    'discount_applied'    => $discount,
+                    'monthly_limit'       => $monthly_discount_limit,
+                    'used_before'         => $used_discount,
+                    'remaining_after'     => max(0, $remaining_discount - $discount)
                 ]
             ]
         ]);
