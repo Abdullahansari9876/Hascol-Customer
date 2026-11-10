@@ -24,6 +24,7 @@ $sub_category_id  = isset($_POST['sub_category_id']) ? (int)$_POST['sub_category
 $name             = trim($_POST['name'] ?? '');
 $brand            = trim($_POST['brand'] ?? '');
 $sku              = trim($_POST['sku'] ?? '');
+$size             = trim($_POST['size'] ?? ''); // NAYA: Size receive kiya
 $description      = trim($_POST['description'] ?? '');
 $price            = isset($_POST['price']) ? (float)$_POST['price'] : 0;
 $discount_percent = isset($_POST['discount_percent']) ? (float)$_POST['discount_percent'] : 0;
@@ -35,6 +36,7 @@ $errors = [];
 if ($id <= 0) $errors['id'] = 'Valid ID required';
 if ($sub_category_id <= 0) $errors['sub_category_id'] = 'Sub-category is required';
 if (empty($name)) $errors['name'] = 'Name is required';
+if (strlen($size) > 20) $errors['size'] = 'Size must not exceed 20 characters'; // NAYA
 if ($price < 0) $errors['price'] = 'Price cannot be negative';
 if ($discount_percent < 0 || $discount_percent > 100) $errors['discount_percent'] = 'Discount must be 0-100';
 if ($stock < 0) $errors['stock'] = 'Stock cannot be negative';
@@ -111,14 +113,16 @@ if (isset($_FILES['image_file']) && $_FILES['image_file']['error'] === UPLOAD_ER
     }
 }
 
+// NAYA: Update query mein `size` add kiya
 $stmt = $db->prepare("
     UPDATE lube_products 
-    SET sub_category_id = ?, category_id = ?, name = ?, brand = ?, sku = ?, description = ?, 
+    SET sub_category_id = ?, category_id = ?, name = ?, brand = ?, sku = ?, size = ?, description = ?, 
         image = ?, price = ?, discount_percent = ?, stock = ?, status = ?, updated_at = NOW()
     WHERE id = ?
 ");
-$stmt->bind_param("iisssssddisi",
-    $sub_category_id, $category_id, $name, $brand, $sku, $description,
+// NAYA: bind_param mein 's' aur $size add kiya (Note: string count check karein)
+$stmt->bind_param("iissssssddisi",
+    $sub_category_id, $category_id, $name, $brand, $sku, $size, $description,
     $finalImage, $price, $discount_percent, $stock, $status, $id
 );
 

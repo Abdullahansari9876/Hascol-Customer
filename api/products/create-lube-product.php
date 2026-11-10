@@ -24,6 +24,7 @@ $category_id      = isset($_POST['category_id']) ? (int)$_POST['category_id'] : 
 $name             = trim($_POST['name'] ?? '');
 $brand            = trim($_POST['brand'] ?? '');
 $sku              = trim($_POST['sku'] ?? '');
+$size             = trim($_POST['size'] ?? ''); // NAYA: Size receive kiya
 $description      = trim($_POST['description'] ?? '');
 $price            = isset($_POST['price']) ? (float)$_POST['price'] : 0;
 $discount_percent = isset($_POST['discount_percent']) ? (float)$_POST['discount_percent'] : 0;
@@ -36,6 +37,7 @@ if (empty($name)) $errors['name'] = 'Product name is required';
 elseif (strlen($name) > 150) $errors['name'] = 'Name must not exceed 150 characters';
 if (strlen($brand) > 100) $errors['brand'] = 'Brand must not exceed 100 characters';
 if (strlen($sku) > 50) $errors['sku'] = 'SKU must not exceed 50 characters';
+if (strlen($size) > 20) $errors['size'] = 'Size must not exceed 20 characters'; // NAYA: Size validation
 if ($price < 0) $errors['price'] = 'Price cannot be negative';
 if ($discount_percent < 0 || $discount_percent > 100) $errors['discount_percent'] = 'Discount must be 0-100';
 if ($stock < 0) $errors['stock'] = 'Stock cannot be negative';
@@ -95,13 +97,15 @@ if (isset($_FILES['image_file']) && $_FILES['image_file']['error'] === UPLOAD_ER
     }
 }
 
+// NAYA: Insert query mein `size` add kiya
 $stmt = $db->prepare("
     INSERT INTO lube_products 
-    (sub_category_id, category_id, name, brand, sku, description, image, price, discount_percent, stock, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+    (sub_category_id, category_id, name, brand, sku, size, description, image, price, discount_percent, stock, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
 ");
-$stmt->bind_param("iisssssddis",
-    $sub_category_id, $category_id, $name, $brand, $sku, $description,
+// NAYA: bind_param mein string 's' aur variable $size add kiya
+$stmt->bind_param("iissssssddis",
+    $sub_category_id, $category_id, $name, $brand, $sku, $size, $description,
     $image, $price, $discount_percent, $stock, $status
 );
 

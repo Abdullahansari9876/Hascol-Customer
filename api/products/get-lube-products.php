@@ -20,7 +20,7 @@ $subCategoryId = (int)($input['sub_category_id'] ?? 0);
 // ─── Products query ───
 if ($subCategoryId > 0) {
     $stmt = $db->prepare("
-        SELECT lp.id, lp.sub_category_id, lp.category_id, lp.sku, 
+        SELECT lp.id, lp.sub_category_id, lp.category_id, lp.sku, lp.size, 
                lp.name, lp.brand, lp.description, lp.image, 
                lp.price, lp.discount_percent, lp.stock, lp.status,
                sc.name AS sub_category_name,
@@ -34,7 +34,7 @@ if ($subCategoryId > 0) {
     $stmt->bind_param("i", $subCategoryId);
 } else {
     $stmt = $db->prepare("
-        SELECT lp.id, lp.sub_category_id, lp.category_id, lp.sku, 
+        SELECT lp.id, lp.sub_category_id, lp.category_id, lp.sku, lp.size, 
                lp.name, lp.brand, lp.description, lp.image, 
                lp.price, lp.discount_percent, lp.stock, lp.status,
                sc.name AS sub_category_name,
@@ -55,6 +55,7 @@ while ($row = $result->fetch_assoc()) {
     $products[] = [
         'id'                => (int)$row['id'],
         'sku'               => $row['sku'] ?? '',
+        'size'              => $row['size'] ?? '', // NAYA: Size return kar rahe hain
         'sub_category_id'   => (int)$row['sub_category_id'],
         'sub_category_name' => $row['sub_category_name'] ?? '',
         'category_id'       => (int)$row['category_id'],         
