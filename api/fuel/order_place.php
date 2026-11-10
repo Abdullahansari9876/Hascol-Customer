@@ -148,20 +148,36 @@ try {
     $db->begin_transaction();
 
     try {
-        // 9a. ORDERS
+        // ============================================
+        // 9a. ORDERS — Server time explicitly store
+        //     created_at aur updated_at me NOW() (MySQL server time)
+        // ============================================
         $orderSql = "INSERT INTO orders 
             (order_number, order_type, customer_id, dealer_id,
              subtotal, discount, total_amount, coupon_id, coupon_code,
-             status, payment_status, delivery_type, station_name, qr_used, created_at, updated_at)
+             status, payment_status, delivery_type, station_name, 
+             qr_used, created_at, updated_at)
             VALUES 
             ('$order_number', 'fuel', $customer_id, $dealer_id,
              $subtotal, $discount, $total_amount, NULL, NULL,
-             'confirmed', 'paid', 'pickup', '$station_name', 0, NOW(), NOW())";
+             'confirmed', 'paid', 'pickup', '$station_name', 
+             0, NOW(), NOW())";
 
         if (!$db->query($orderSql)) {
             throw new Exception('Orders insert failed: ' . $db->error);
         }
         $order_id = $db->insert_id;
+
+        // ============================================
+        // 9a-2. SERVER TIME FETCH — order ka created_at
+        //       (taake response me exact server time dikhe)
+        // ============================================
+        $timeSql = "SELECT created_at FROM orders WHERE id = $order_id LIMIT 1";
+        $timeResult = $db->query($timeSql);
+        $server_timestamp = date('Y-m-d H:i:s');
+        if ($timeResult && $timeResult->num_rows > 0) {
+            $server_timestamp = $timeResult->fetch_assoc()['created_at'];
+        }
 
         // 9b. ORDER_ITEMS
         $product_name_esc = $db->real_escape_string($product['name']);
@@ -193,10 +209,13 @@ try {
         $transaction_id = $db->insert_id;
 
         // ============================================
-        // 9d. QR USED MARK — is order ka QR use ho gaya
-        //     (customer_usage.php me inactive dikhega)
+        // 9d. QR MARK — qr_used = 1, qr_status = inactive, qr_used_at = server time
         // ============================================
-        $markQrSql = "UPDATE orders SET qr_used = 1 WHERE id = $order_id";
+        $markQrSql = "UPDATE orders 
+                      SET qr_used = 1,
+                          qr_status = 'inactive',
+                          qr_used_at = NOW()
+                      WHERE id = $order_id";
         if (!$db->query($markQrSql)) {
             throw new Exception('QR mark failed: ' . $db->error);
         }
@@ -214,6 +233,7 @@ try {
                 'order_item_id'   => $order_item_id,
                 'transaction_id'  => $transaction_id,
                 'transaction_ref' => $txn_ref,
+                'server_timestamp' => $server_timestamp,   // ← server time
                 'product' => [
                     'id'   => (int)$product['id'],
                     'name' => $product['name'],
