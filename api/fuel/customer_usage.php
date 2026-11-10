@@ -73,9 +73,13 @@ try {
         : 0;
 
     // ============================================
-    // 7. QR STATUS — USE-BASED (qr_used column)
+    // 7. QR STATUS — qr_used + 2-minute window
+    //    - 2 min se zyada → active (naya window)
+    //    - 2 min ke andar + qr_used = 1 → inactive
+    //    - 2 min ke andar + qr_used = 0 → active
     // ============================================
-    $server_time = date('Y-m-d H:i:s');
+    $server_time      = date('Y-m-d H:i:s');
+    $qr_valid_minutes = 2;
 
     $qrSql = "SELECT id, order_number, created_at, qr_used 
               FROM orders 
@@ -91,21 +95,35 @@ try {
         $latest_order = $qrResult->fetch_assoc();
         $qr_used = (int)$latest_order['qr_used'];
 
-        if ($qr_used === 0) {
+        // Server time se compare
+        $qr_ts        = strtotime($latest_order['created_at']);
+        $server_ts    = strtotime($server_time);
+        $diff_minutes = ($server_ts - $qr_ts) / 60;
+
+        if ($diff_minutes > $qr_valid_minutes) {
+            // 2 min ho gaye — status = active (naya window)
             $qr_status = 'active';
             $is_active = true;
-        } else {
+        } elseif ($qr_used === 1) {
+            // 2 min ke andar, QR use ho gaya
             $qr_status = 'inactive';
             $is_active = false;
+        } else {
+            // 2 min ke andar, QR use nahi hua
+            $qr_status = 'active';
+            $is_active = true;
         }
 
         $qr_info = [
-            'order_id'     => (int)$latest_order['id'],
-            'order_number' => $latest_order['order_number'],
-            'status'       => $qr_status,
-            'is_active'    => $is_active,
-            'qr_time'      => $latest_order['created_at'],
-            'qr_used'      => $qr_used
+            'order_id'        => (int)$latest_order['id'],
+            'order_number'    => $latest_order['order_number'],
+            'status'          => $qr_status,
+            'is_active'       => $is_active,
+            'qr_time'         => $latest_order['created_at'],
+            'qr_used'         => $qr_used,
+            'valid_minutes'   => $qr_valid_minutes,
+            'minutes_ago'     => round($diff_minutes, 2),
+            'window_expires_at' => date('Y-m-d H:i:s', strtotime($latest_order['created_at'] . ' +' . $qr_valid_minutes . ' minutes'))
         ];
     }
 
