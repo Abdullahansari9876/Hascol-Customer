@@ -74,8 +74,6 @@ try {
 
     // ============================================
     // 7. QR STATUS — USE-BASED (qr_used column)
-    //    qr_used = 0 → active
-    //    qr_used = 1 → inactive
     // ============================================
     $server_time = date('Y-m-d H:i:s');
 
@@ -91,7 +89,6 @@ try {
 
     if ($qrResult && $qrResult->num_rows > 0) {
         $latest_order = $qrResult->fetch_assoc();
-
         $qr_used = (int)$latest_order['qr_used'];
 
         if ($qr_used === 0) {
