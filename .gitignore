@@ -8,9 +8,13 @@ hascolbridge_api/db.php
 # Ignore hascolbridge_api folder (local only)
 hascolbridge_api/
 
+# Environment-specific IIS configuration (keep production values out of Git)
+/Web.config
+/api/web.config
+
+# Keep local auth endpoints out of Git
+/auth/login.php
+/auth/logout.php
+
 # Ignore all zip files
 *.zip
-api/web.config
-
-# Ye line api folder ke andar wale auth folder ko ignore karegi
-api/auth/
